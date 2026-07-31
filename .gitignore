@@ -1,0 +1,98 @@
+# =============================================================================
+#  Codec Studio — .gitignore
+# =============================================================================
+
+# --- Artefatos de build ------------------------------------------------------
+# Gerados por `npm run build`; sempre reproduzíveis a partir do código-fonte.
+dist/
+codec-studio-*.zip
+
+# --- Chaves e pacotes de extensão -------------------------------------------
+# CRÍTICO: o .pem é a chave privada que assina a extensão e define o seu ID na
+# loja. Se vazar, qualquer pessoa consegue publicar uma atualização se passando
+# por você. Nunca versione.
+*.pem
+*.crx
+*.xpi
+key.pem
+
+# --- Segredos e configuração local ------------------------------------------
+.env
+.env.*
+!.env.example
+*.local
+secrets.json
+
+# --- Node --------------------------------------------------------------------
+# O projeto não tem dependências, mas ferramentas auxiliares podem criar estes.
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm/
+.node_repl_history
+*.tsbuildinfo
+.eslintcache
+
+# --- macOS -------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.fseventsd
+.DocumentRevisions-V100
+.com.apple.timemachine.donotpresent
+# (o arquivo "Icon\r" do Finder não entra aqui de propósito: o padrão "Icon?"
+#  casaria a pasta icons/ em filesystems case-insensitive como o do macOS)
+
+# --- Windows -----------------------------------------------------------------
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+desktop.ini
+$RECYCLE.BIN/
+*.lnk
+*.stackdump
+
+# --- Linux -------------------------------------------------------------------
+*~
+.directory
+.Trash-*
+.fuse_hidden*
+.nfs*
+
+# --- Editores e IDEs ---------------------------------------------------------
+.idea/
+*.iml
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+.history/
+
+# VS Code: mantém as configurações compartilháveis da equipe, ignora o resto.
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+
+# --- Claude Code -------------------------------------------------------------
+# .claude/launch.json é útil para o time (sobe para o repositório);
+# as preferências locais de permissão, não.
+.claude/settings.local.json
+
+# --- Diversos ----------------------------------------------------------------
+*.log
+*.bak
+*.tmp
+coverage/
+.cache/
+tmp/
