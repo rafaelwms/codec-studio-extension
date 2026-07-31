@@ -1,0 +1,15 @@
+{
+  "name": "codec-studio",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Extensão MV3 100% offline: Base64 e JSON ⇄ Java. Sem dependências de runtime nem de build.",
+  "scripts": {
+    "test": "node --test tests/",
+    "build": "node scripts/build.mjs",
+    "icons": "node scripts/make-icons.mjs",
+    "serve": "python3 -m http.server 4173"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

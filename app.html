@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Codec Studio</title>
+  <link rel="icon" href="icons/icon32.png">
+  <link rel="stylesheet" href="styles/app.css">
+</head>
+<body>
+  <div class="aurora" aria-hidden="true">
+    <span class="aurora__blob aurora__blob--a"></span>
+    <span class="aurora__blob aurora__blob--b"></span>
+    <span class="aurora__grid"></span>
+  </div>
+
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <svg class="brand__mark" viewBox="0 0 32 32" aria-hidden="true">
+          <defs>
+            <linearGradient id="brandGradient" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="var(--accent)"/>
+              <stop offset="100%" stop-color="var(--accent-2)"/>
+            </linearGradient>
+          </defs>
+          <rect x="1.5" y="1.5" width="29" height="29" rx="9" fill="none" stroke="url(#brandGradient)" stroke-width="2"/>
+          <path d="M12.5 9.5c-2.6 0-3 1.6-3 3.4s-.4 3.1-2 3.1c1.6 0 2 1.3 2 3.1s.4 3.4 3 3.4"
+                fill="none" stroke="url(#brandGradient)" stroke-width="2" stroke-linecap="round"/>
+          <path d="M19.5 9.5c2.6 0 3 1.6 3 3.4s.4 3.1 2 3.1c-1.6 0-2 1.3-2 3.1s-.4 3.4-3 3.4"
+                fill="none" stroke="url(#brandGradient)" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <div class="brand__text">
+          <h1>Codec Studio</h1>
+          <p class="brand__tag">
+            <span class="dot" aria-hidden="true"></span>
+            100% offline · sem permissões
+          </p>
+        </div>
+      </div>
+
+      <nav class="tabs" role="tablist" aria-label="Ferramenta">
+        <span class="tabs__indicator" aria-hidden="true"></span>
+        <button class="tab is-active" role="tab" type="button" id="tab-base64"
+                data-tool="base64" aria-selected="true" aria-controls="workspace">Base64</button>
+        <button class="tab" role="tab" type="button" id="tab-json-java"
+                data-tool="json-java" aria-selected="false" aria-controls="workspace">JSON ⇄ Java</button>
+      </nav>
+
+      <div class="topbar__actions">
+        <button class="icon-btn" type="button" data-action="theme" aria-label="Alternar tema claro/escuro" title="Alternar tema (T)">
+          <svg viewBox="0 0 24 24" aria-hidden="true" class="icon-sun">
+            <circle cx="12" cy="12" r="4.2"/>
+            <path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.2 5.2l1.9 1.9M16.9 16.9l1.9 1.9M18.8 5.2l-1.9 1.9M7.1 16.9l-1.9 1.9"/>
+          </svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true" class="icon-moon">
+            <path d="M20 14.2A8.2 8.2 0 0 1 9.8 4 8.2 8.2 0 1 0 20 14.2Z"/>
+          </svg>
+        </button>
+        <button class="icon-btn" type="button" data-action="expand" aria-label="Abrir em uma aba" title="Abrir em uma aba">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M14 4h6v6M20 4l-8.5 8.5M18 14.5V19a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 19V8a1.5 1.5 0 0 1 1.5-1.5H10"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <section class="options" id="options" aria-label="Opções de conversão"></section>
+
+    <main class="workspace" id="workspace" role="tabpanel" aria-labelledby="tab-base64">
+      <article class="panel panel--input">
+        <header class="panel__head">
+          <h2 class="panel__title" id="input-title">Entrada</h2>
+          <div class="panel__tools">
+            <button class="ghost-btn" type="button" data-action="sample">Exemplo</button>
+            <button class="ghost-btn" type="button" data-action="clear">Limpar</button>
+          </div>
+        </header>
+        <div class="panel__body">
+          <textarea id="input" class="editor" spellcheck="false" autocomplete="off" autocapitalize="off"
+                    aria-labelledby="input-title" placeholder="Digite, cole ou solte um arquivo aqui…"></textarea>
+          <div class="dropzone" aria-hidden="true"><span>Solte o arquivo para carregar</span></div>
+        </div>
+        <footer class="panel__foot">
+          <span class="metric" id="input-metrics">0 caracteres</span>
+        </footer>
+      </article>
+
+      <div class="switchboard">
+        <button class="convert-btn" type="button" data-action="convert" title="Converter (Ctrl/⌘ + Enter)" aria-label="Converter">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 9h13M13 5l4 4-4 4M20 15H7M11 11l-4 4 4 4"/>
+          </svg>
+          <span class="convert-btn__pulse" aria-hidden="true"></span>
+        </button>
+        <button class="swap-btn" type="button" data-action="swap" title="Inverter direção (Ctrl/⌘ + I)" aria-label="Inverter direção">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M7 4v14M7 18l-3-3M7 18l3-3M17 20V6M17 6l-3 3M17 6l3 3"/>
+          </svg>
+        </button>
+      </div>
+
+      <article class="panel panel--output" id="output-panel">
+        <header class="panel__head">
+          <h2 class="panel__title" id="output-title">Saída</h2>
+          <div class="panel__tools">
+            <button class="ghost-btn" type="button" data-action="download">Baixar</button>
+            <button class="ghost-btn ghost-btn--primary" type="button" data-action="copy">Copiar</button>
+          </div>
+        </header>
+        <div class="panel__body">
+          <pre class="editor editor--output" id="output" tabindex="0" aria-labelledby="output-title" aria-live="polite"></pre>
+          <div class="scanline" aria-hidden="true"></div>
+          <div class="placeholder" id="placeholder">O resultado aparece aqui.</div>
+          <div class="error-card" id="error-card" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true" class="error-card__icon">
+              <circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.4v.1"/>
+            </svg>
+            <div>
+              <p class="error-card__title" id="error-title"></p>
+              <p class="error-card__hint" id="error-hint"></p>
+            </div>
+          </div>
+        </div>
+        <footer class="panel__foot">
+          <span class="metric" id="output-metrics">—</span>
+          <span class="metric metric--time" id="timing"></span>
+        </footer>
+      </article>
+    </main>
+
+    <section class="warnings" id="warnings" aria-live="polite"></section>
+
+    <footer class="statusbar">
+      <span class="statusbar__item statusbar__item--shield">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5.5c0 4.3-2.9 8.2-7 9.5-4.1-1.3-7-5.2-7-9.5V6l7-3Z"/><path d="M9 12.2l2.2 2.2 4-4.4"/></svg>
+        Nada sai do seu navegador
+      </span>
+      <span class="statusbar__hint">
+        <kbd>Ctrl</kbd>+<kbd>Enter</kbd> converter · <kbd>Ctrl</kbd>+<kbd>I</kbd> inverter · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> copiar
+      </span>
+    </footer>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="src/ui/main.js"></script>
+</body>
+</html>
