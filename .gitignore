@@ -7,6 +7,11 @@
 dist/
 codec-studio-*.zip
 
+# Página de captura derivada do app.html por `npm run assets`.
+# Os PNGs em press/ ficam versionados: são os assets enviados à loja.
+press/demo.html
+STORE.md
+
 # --- Chaves e pacotes de extensão -------------------------------------------
 # CRÍTICO: o .pem é a chave privada que assina a extensão e define o seu ID na
 # loja. Se vazar, qualquer pessoa consegue publicar uma atualização se passando
