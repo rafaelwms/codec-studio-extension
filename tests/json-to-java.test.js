@@ -33,10 +33,10 @@ test('estilo Lombok não emite acessores', () => {
 
 test('nomes de chave viram identificadores Java válidos com @JsonProperty', () => {
   const { output } = parse({ 'first-name': 'Ana', user_id: 7, class: 'A', '2fa': true });
-  assert.match(output, /@JsonProperty\("first-name"\) String firstName/);
-  assert.match(output, /@JsonProperty\("user_id"\) Integer userId/);
-  assert.match(output, /@JsonProperty\("class"\) String classValue/, 'palavra reservada é renomeada');
-  assert.match(output, /@JsonProperty\("2fa"\) Boolean _2fa/, 'identificador não pode iniciar com dígito');
+  assert.match(output, /@JsonProperty\("first-name"\)\n\s+String firstName/);
+  assert.match(output, /@JsonProperty\("user_id"\)\n\s+Integer userId/);
+  assert.match(output, /@JsonProperty\("class"\)\n\s+String classValue/, 'palavra reservada é renomeada');
+  assert.match(output, /@JsonProperty\("2fa"\)\n\s+Boolean _2fa/, 'identificador não pode iniciar com dígito');
 });
 
 test('objetos aninhados viram classes estáticas internas', () => {
@@ -105,7 +105,7 @@ test('chaves dinâmicas viram Map<String, …>', () => {
   const { output, warnings } = parse({ byId: { 101: { total: 5 }, 102: { total: 8 } } });
   assert.match(output, /Map<String, ById> byId/);
   assert.match(output, /import java\.util\.Map;/);
-  assert.ok(warnings.some((warning) => /chaves dinâmicas/.test(warning)));
+  assert.ok(warnings.some((warning) => /dynamic keys/.test(warning)));
 });
 
 test('raiz em array gera a classe do elemento e explica o tipo da raiz', () => {
@@ -128,15 +128,20 @@ test('classes separadas em vez de aninhadas', () => {
 });
 
 test('package e imports ordenados', () => {
-  const { output } = parse({ when: '2026-07-30', tags: ['a'] }, { packageName: 'com.exemplo.dto' });
+  // "created_at" precisa de @JsonProperty, então o import do Jackson entra na lista.
+  const { output } = parse(
+    { created_at: '2026-07-30', tags: ['a'] },
+    { packageName: 'com.exemplo.dto' },
+  );
   const lines = output.split('\n');
   assert.equal(lines[1], 'package com.exemplo.dto;');
+  assert.match(lines[0], /^\/\/ /, 'primeira linha é o comentário de cabeçalho');
   const imports = lines.filter((line) => line.startsWith('import '));
   assert.deepEqual(imports, [
     'import java.time.LocalDate;',
     'import java.util.List;',
     'import com.fasterxml.jackson.annotation.JsonProperty;',
-  ]);
+  ], 'java.* vem antes de com.*');
 });
 
 test('colisão de nomes de classe é resolvida', () => {
@@ -148,12 +153,16 @@ test('colisão de nomes de classe é resolvida', () => {
 test('JSON inválido reporta linha e coluna', () => {
   const error = catchError(() => jsonToJava('{\n  "a": 1,\n  "b": \n}'));
   assert.ok(error instanceof CodecError);
-  assert.match(error.message, /linha \d+, coluna \d+/);
+  assert.equal(error.code, 'core.json.invalidAt');
+  assert.equal(typeof error.params.line, 'number');
+  assert.equal(typeof error.params.column, 'number');
+  assert.match(error.message, /line \d+, column \d+/);
 });
 
 test('raiz escalar é recusada com orientação', () => {
   const error = catchError(() => jsonToJava('42'));
-  assert.match(error.message, /objeto ou um array/);
+  assert.equal(error.code, 'core.jsonToJava.rootMustBeObject');
+  assert.match(error.hint, /number/);
 });
 
 test('entrada vazia é recusada', () => {
@@ -168,3 +177,62 @@ function catchError(fn) {
   }
   throw new Error('esperava uma exceção');
 }
+
+test('a anotação fica na linha acima do componente, nunca inline', () => {
+  const { output } = parse({ full_name: 'Ana', email: 'a@b.c' }, { rootClassName: 'User' });
+
+  // Nenhuma linha deve conter a anotação e a declaração ao mesmo tempo.
+  const inline = output.split('\n').filter((line) => /@JsonProperty\(.*\)\s+\S/.test(line));
+  assert.deepEqual(inline, [], 'anotação não pode compartilhar a linha com o componente');
+
+  assert.match(output, /@JsonProperty\("full_name"\)\n\s+String fullName,/);
+});
+
+test('sem jacksonAll, campos com nome já equivalente não são anotados', () => {
+  const { output } = parse({ shortUrl: '', description: '', realUrl: '' });
+  assert.ok(!output.includes('@JsonProperty'), 'anotação seria redundante');
+  assert.match(output, /String shortUrl/);
+});
+
+test('com jacksonAll, todo campo é anotado', () => {
+  const { output } = parse(
+    { shortUrl: '', description: '', expires_at: '' },
+    { jacksonAll: true, rootClassName: 'Link' },
+  );
+  assert.match(output, /@JsonProperty\("shortUrl"\)\n\s+String shortUrl/);
+  assert.match(output, /@JsonProperty\("description"\)\n\s+String description/);
+  assert.match(output, /@JsonProperty\("expires_at"\)\n\s+String expiresAt/, 'renomeados continuam anotados');
+  assert.equal((output.match(/@JsonProperty/g) || []).length, 3);
+});
+
+test('jacksonAll também vale para POJO e Lombok', () => {
+  for (const style of ['pojo', 'lombok']) {
+    const { output } = parse({ shortUrl: '', enabled: false }, { style, jacksonAll: true });
+    assert.equal((output.match(/@JsonProperty/g) || []).length, 2, `estilo ${style}`);
+    assert.match(output, /@JsonProperty\("shortUrl"\)\n\s+private String shortUrl;/);
+  }
+});
+
+test('jacksonAll não faz efeito com Jackson desligado', () => {
+  const { output } = parse({ shortUrl: '', user_id: 1 }, { jackson: false, jacksonAll: true });
+  assert.ok(!output.includes('@JsonProperty'));
+  assert.ok(!output.includes('import com.fasterxml'));
+});
+
+test('classes aninhadas também respeitam jacksonAll', () => {
+  const { output } = parse({ address: { city: 'SP' } }, { jacksonAll: true, rootClassName: 'Customer' });
+  assert.match(output, /@JsonProperty\("city"\)\n\s+String city/);
+});
+
+test('o import do Jackson só entra quando há anotação de verdade', () => {
+  // Nomes já equivalentes: nenhuma anotação sai, então o import seria código morto.
+  const semAnotacao = parse({ shortUrl: '', enabled: false });
+  assert.ok(!semAnotacao.output.includes('@JsonProperty'));
+  assert.ok(!semAnotacao.output.includes('import com.fasterxml'), 'import não usado não deve aparecer');
+
+  const comAnotacao = parse({ short_url: '' });
+  assert.match(comAnotacao.output, /import com\.fasterxml\.jackson\.annotation\.JsonProperty;/);
+
+  const comAnotarTudo = parse({ shortUrl: '' }, { jacksonAll: true });
+  assert.match(comAnotarTudo.output, /import com\.fasterxml\.jackson\.annotation\.JsonProperty;/);
+});

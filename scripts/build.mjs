@@ -16,7 +16,7 @@ const dist = join(root, 'dist');
 const manifest = JSON.parse(readFileSync(join(root, 'manifest.json'), 'utf8'));
 const bundleName = `codec-studio-${manifest.version}.zip`;
 
-const SHIPPED = ['manifest.json', 'app.html', 'src', 'styles', 'icons'];
+const SHIPPED = ['manifest.json', 'app.html', 'src', 'styles', 'icons', '_locales'];
 
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(dist, { recursive: true });

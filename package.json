@@ -1,13 +1,15 @@
 {
   "name": "codec-studio",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "Extensão MV3 100% offline: Base64 e JSON ⇄ Java. Sem dependências de runtime nem de build.",
+  "description": "Extensão MV3 100% offline: converte entre JSON, YAML, Java, C#, TypeScript, Dart, Swift, Go e Base64. Sem dependências.",
+  "license": "MIT",
   "scripts": {
-    "test": "node --test tests/",
+    "test": "node --test \"tests/*.test.js\"",
     "build": "node scripts/build.mjs",
     "icons": "node scripts/make-icons.mjs",
+    "assets": "node scripts/make-store-assets.mjs",
     "serve": "python3 -m http.server 4173"
   },
   "dependencies": {},

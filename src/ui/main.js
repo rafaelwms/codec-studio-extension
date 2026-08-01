@@ -7,57 +7,56 @@
  *  3. A conversão é síncrona e local; o "tempo" mostrado é medição real.
  */
 
-import { CodecError, decodeText, encodeText, looksLikeBase64 } from '../core/base64.js';
-import { jsonToJava } from '../core/json-to-java.js';
-import { javaToJson } from '../core/java-to-json.js';
+import { CodecError } from '../core/base64.js';
 import { highlight } from './highlight.js';
-import { createOptionsBar } from './options.js';
+import {
+  applyTranslations, detectLanguage, formatMs, getLanguage,
+  LANGUAGES, plural, refreshFormats, setLanguage, t,
+} from './i18n.js';
+import { createOptionsPanel, TARGET_OPTIONS } from './options.js';
 import { loadPrefs, savePrefs } from './prefs.js';
+import { getSurface, isValidPair, runConversion, SURFACES, targetsFor } from './surfaces.js';
 
 /* ------------------------------------------------------------------ estado */
 
+/** Padrões de cada formato de destino, espelhando os defaults do núcleo. */
+const OPTION_DEFAULTS = {
+  base64: { alphabet: 'standard', padding: true, wrap: false },
+  text: { strict: false },
+  json: { values: 'example' },
+  yaml: { values: 'example' },
+  java: { style: 'record', packageName: '', jackson: true, jacksonAll: false, primitives: true, separateFiles: false },
+  csharp: { style: 'class', namespaceName: '', jsonAttributes: true, jsonAttributesAll: false, nullableAnnotations: true },
+  typescript: { style: 'interface', exportTypes: true, optionalMarker: true, readonlyFields: false, useDate: false },
+  dart: { finalFields: true, jsonMethods: true, namedParameters: true },
+  swift: { style: 'struct', codable: true, letConstants: true, codingKeys: true },
+  go: { packageName: 'main', jsonTags: true, omitempty: true, pointerOptionals: true, useTime: true },
+};
+
 const DEFAULT_PREFS = {
   theme: 'dark',
-  tool: 'base64',
-  base64: {
-    direction: 'encode',
-    alphabet: 'standard',
-    padding: true,
-    wrap: false,
-    strict: false,
-  },
-  'json-java': {
-    direction: 'json-to-java',
-    style: 'record',
-    rootClassName: 'Root',
-    packageName: '',
-    jackson: true,
-    primitives: true,
-    dateTypes: true,
-    separateFiles: false,
-    values: 'example',
-    rootType: '',
-  },
+  language: '', // vazio = seguir o idioma do navegador
+  from: 'json',
+  to: 'java',
+  shared: { rootName: 'Root', detectDateTime: true },
+  options: structuredClone(OPTION_DEFAULTS),
 };
 
 const prefs = loadPrefs(DEFAULT_PREFS);
 
 /** Estado volátil (nunca persistido). */
 const runtime = {
-  detectedTypes: [],
   output: '',
-  language: 'plain',
+  highlight: 'plain',
   hasError: false,
-  autoDirection: null,
-  /** Rascunho por ferramenta: alternar as abas não faz perder o texto. */
-  drafts: { base64: '', 'json-java': '' },
+  detectedTypes: [],
+  rootType: '',
+  /** Rascunho por formato de origem: trocar de formato não faz perder o texto. */
+  drafts: {},
 };
 
-const AUTO_CONVERT_LIMIT = 400_000; // acima disso, conversão só sob demanda
+const AUTO_CONVERT_LIMIT = 400_000;
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
-
-const numberFormat = new Intl.NumberFormat('pt-BR');
-const msFormat = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2, minimumFractionDigits: 2 });
 
 /* -------------------------------------------------------------------- DOM */
 
@@ -65,17 +64,18 @@ const $ = (selector) => document.querySelector(selector);
 
 const dom = {
   root: document.documentElement,
-  tabs: $('.tabs'),
-  tabButtons: [...document.querySelectorAll('.tab')],
+  fromSelect: $('#from-format'),
+  toSelect: $('#to-format'),
   options: $('#options'),
+  popover: $('#options-popover'),
+  backdrop: $('#popover-backdrop'),
+  optionsBtn: $('[data-action="options"]'),
+  optionsCount: $('#options-count'),
   workspace: $('#workspace'),
   inputPanel: $('.panel--input'),
   outputPanel: $('#output-panel'),
   input: $('#input'),
   output: $('#output'),
-  placeholder: $('#placeholder'),
-  inputTitle: $('#input-title'),
-  outputTitle: $('#output-title'),
   inputMetrics: $('#input-metrics'),
   outputMetrics: $('#output-metrics'),
   timing: $('#timing'),
@@ -89,139 +89,35 @@ const dom = {
   toast: $('#toast'),
 };
 
-const optionsBar = createOptionsBar(dom.options, handleOptionChange);
+const optionsPanel = createOptionsPanel(dom.options, handleOptionChange);
 
-/* ---------------------------------------------------------------- rótulos */
+/* ---------------------------------------------------------------- conversão */
 
-const LABELS = {
-  base64: {
-    encode: { input: 'Texto', output: 'Base64', placeholder: 'Digite o texto que deve virar Base64…' },
-    decode: { input: 'Base64', output: 'Texto', placeholder: 'Cole o Base64 para decodificar…' },
-    auto: { input: 'Texto ou Base64', output: 'Resultado', placeholder: 'Cole qualquer um dos dois — a direção é detectada…' },
-  },
-  'json-java': {
-    'json-to-java': { input: 'JSON', output: 'Java', placeholder: '{\n  "id": 1,\n  "nome": "Ana"\n}' },
-    'java-to-json': { input: 'Java', output: 'JSON', placeholder: 'public record Pessoa(Long id, String nome) { }' },
-  },
-};
+const surfaceLabel = (surface) => (surface.labelKey ? t(surface.labelKey) : surface.label);
 
-const SAMPLES = {
-  base64: {
-    encode: 'Olá, mundo! Codec Studio funciona 100% offline. 🔒',
-    decode: 'T2zDoSwgbXVuZG8hIENvZGVjIFN0dWRpbyBmdW5jaW9uYSAxMDAlIG9mZmxpbmUuIPCflJI=',
-    auto: 'T2zDoSwgbXVuZG8h',
-  },
-  'json-java': {
-    'json-to-java': JSON.stringify(
-      {
-        id: 1024,
-        full_name: 'Ana Souza',
-        email: 'ana@exemplo.com',
-        active: true,
-        score: 9.75,
-        created_at: '2026-07-30T10:15:30Z',
-        address: { city: 'São Paulo', state: 'SP', zip: '01310-000' },
-        orders: [
-          { sku: 'CS-100', quantity: 2, total: 199.9 },
-          { sku: 'CS-200', quantity: 1, total: 49.9, note: 'presente' },
-        ],
-        tags: ['premium', 'beta'],
-      },
-      null,
-      2,
-    ),
-    'java-to-json': `public class Pedido {
-    private Long id;
-    private String cliente;
-
-    @JsonProperty("criado_em")
-    private OffsetDateTime criadoEm;
-
-    private BigDecimal total;
-    private Status status;
-    private List<Item> itens;
-
-    public static class Item {
-        private String sku;
-        private int quantidade;
-        private BigDecimal preco;
-    }
+/** Estado achatado que os controles de opção consultam. */
+function optionState() {
+  const from = getSurface(prefs.from);
+  const to = getSurface(prefs.to);
+  return {
+    from: prefs.from,
+    to: prefs.to,
+    fromFamily: from.family === 'text' ? 'text' : from.kind,
+    toFamily: to.family === 'text' ? 'text' : to.kind,
+    detectedTypes: runtime.detectedTypes,
+    rootType: runtime.rootType,
+    ...prefs.shared,
+    ...prefs.options[prefs.to],
+  };
 }
 
-enum Status { ABERTO, PAGO, CANCELADO }`,
-  },
-};
-
-/* --------------------------------------------------------------- conversão */
-
-function toolState() {
-  return { tool: prefs.tool, ...prefs[prefs.tool], detectedTypes: runtime.detectedTypes };
-}
-
-function renderOptions() {
-  optionsBar.render(toolState());
-  requestAnimationFrame(updateOptionsOverflow);
-}
-
-function currentDirection() {
-  return prefs[prefs.tool].direction;
-}
-
-function runConversion(text) {
-  const options = prefs[prefs.tool];
-
-  if (prefs.tool === 'base64') {
-    let direction = options.direction;
-    if (direction === 'auto') {
-      direction = looksLikeBase64(text) ? 'decode' : 'encode';
-      runtime.autoDirection = direction;
-    } else {
-      runtime.autoDirection = null;
-    }
-
-    if (direction === 'encode') {
-      const result = encodeText(text, {
-        urlSafe: options.alphabet === 'url',
-        padding: options.padding,
-        lineLength: options.wrap ? 76 : 0,
-      });
-      return { output: result.output, warnings: result.warnings, language: 'plain', bytes: result.bytes };
-    }
-
-    const result = decodeText(text, { strict: options.strict });
-    return {
-      // Conteúdo binário é mostrado como dump hexadecimal: mais útil do que U+FFFD.
-      output: result.binary ? result.hex : result.output,
-      warnings: result.warnings,
-      language: 'plain',
-      bytes: result.bytes,
-    };
-  }
-
-  if (options.direction === 'json-to-java') {
-    runtime.detectedTypes = [];
-    const result = jsonToJava(text, {
-      rootClassName: options.rootClassName || 'Root',
-      packageName: options.packageName,
-      style: options.style,
-      jackson: options.jackson,
-      primitives: options.primitives,
-      detectDateTime: options.dateTypes,
-      nested: options.separateFiles ? 'separate' : 'inner',
-    });
-    return { output: result.output, warnings: result.warnings, language: 'java' };
-  }
-
-  const result = javaToJson(text, { rootType: options.rootType, values: options.values });
-  const changed =
-    result.types.length !== runtime.detectedTypes.length ||
-    result.types.some((type, index) => type !== runtime.detectedTypes[index]);
-  runtime.detectedTypes = result.types;
-  if (!options.rootType || !result.types.includes(options.rootType)) {
-    prefs[prefs.tool].rootType = result.rootName;
-  }
-  if (changed) renderOptions();
-  return { output: result.output, warnings: result.warnings, language: 'json' };
+/** Opções entregues ao núcleo: as do destino, mais as compartilhadas. */
+function conversionOptions() {
+  return {
+    ...prefs.shared,
+    ...prefs.options[prefs.to],
+    rootType: runtime.rootType || undefined,
+  };
 }
 
 function convert({ animate = true } = {}) {
@@ -235,18 +131,25 @@ function convert({ animate = true } = {}) {
 
   const started = performance.now();
   try {
-    const result = runConversion(text);
+    const result = runConversion(text, prefs.from, prefs.to, conversionOptions());
     const elapsed = performance.now() - started;
+
+    // A lista de tipos vem do documento: alimenta o seletor de raiz.
+    const changed = result.detectedTypes.join() !== runtime.detectedTypes.join();
+    runtime.detectedTypes = result.detectedTypes;
+    if (changed) {
+      if (!result.detectedTypes.includes(runtime.rootType)) runtime.rootType = result.rootName || '';
+      renderOptions();
+    }
 
     runtime.hasError = false;
     runtime.output = result.output;
-    runtime.language = result.language;
+    runtime.highlight = result.highlight;
 
     dom.errorCard.hidden = true;
-    renderOutput(result.output, result.language, animate);
+    renderOutput(result.output, result.highlight, animate);
     renderWarnings(result.warnings);
     updateOutputMetrics(result.output, elapsed);
-    updateLabels();
   } catch (error) {
     renderError(error);
   }
@@ -257,13 +160,40 @@ function scheduleConvert() {
   clearTimeout(debounceTimer);
   updateInputMetrics(dom.input.value);
   if (dom.input.value.length > AUTO_CONVERT_LIMIT) {
-    dom.timing.textContent = 'entrada grande — use o botão Converter';
+    dom.timing.textContent = t('ui.metrics.largeInput');
     return;
   }
   debounceTimer = setTimeout(() => convert({ animate: true }), 140);
 }
 
-/* ---------------------------------------------------------------- render */
+/* ------------------------------------------------------------------ render */
+
+function renderFormatSelects() {
+  fillSelect(dom.fromSelect, SURFACES, prefs.from);
+
+  const targets = targetsFor(prefs.from);
+  if (!targets.some((surface) => surface.id === prefs.to)) {
+    prefs.to = targets[0].id;
+  }
+  fillSelect(dom.toSelect, targets, prefs.to);
+}
+
+function fillSelect(select, surfaces, selected) {
+  select.replaceChildren();
+  for (const surface of surfaces) {
+    const option = document.createElement('option');
+    option.value = surface.id;
+    option.textContent = surfaceLabel(surface);
+    select.append(option);
+  }
+  select.value = selected;
+}
+
+function renderOptions() {
+  const state = optionState();
+  const count = optionsPanel.render(state);
+  dom.optionsCount.textContent = count > 0 ? String(count) : '';
+}
 
 function renderOutput(text, language, animate) {
   dom.output.classList.toggle('is-plain', language === 'plain');
@@ -300,11 +230,11 @@ function renderError(error) {
 
   dom.output.replaceChildren();
   dom.warnings.replaceChildren();
-  dom.outputMetrics.textContent = '—';
+  dom.outputMetrics.textContent = t('ui.metrics.none');
   dom.timing.textContent = '';
 
   const isCodecError = error instanceof CodecError;
-  dom.errorTitle.textContent = isCodecError ? error.message : 'Não foi possível converter.';
+  dom.errorTitle.textContent = isCodecError ? error.message : t('ui.error.generic');
   dom.errorHint.textContent = isCodecError && error.hint ? error.hint : String(error?.message || error);
   dom.errorCard.hidden = false;
 
@@ -325,74 +255,56 @@ function clearOutput() {
   dom.output.replaceChildren();
   dom.warnings.replaceChildren();
   dom.errorCard.hidden = true;
-  dom.outputMetrics.textContent = '—';
+  dom.outputMetrics.textContent = t('ui.metrics.none');
   dom.timing.textContent = '';
 }
 
-function byteLength(text) {
-  return new TextEncoder().encode(text).length;
-}
+const byteLength = (text) => new TextEncoder().encode(text).length;
 
 function updateInputMetrics(text) {
   const chars = text.length;
-  const label = plural(chars, 'caractere', 'caracteres');
-  // Recontar bytes a cada tecla fica caro em textos enormes; aí mostramos só os caracteres.
+  const label = plural(chars, 'char');
+  // Recontar bytes a cada tecla fica caro em textos enormes.
   dom.inputMetrics.textContent =
-    chars > 200_000 ? label : `${label} · ${plural(byteLength(text), 'byte', 'bytes')}`;
-}
-
-function plural(count, singular, pluralForm) {
-  return `${numberFormat.format(count)} ${count === 1 ? singular : pluralForm}`;
+    chars > 200_000 ? label : `${label} · ${plural(byteLength(text), 'byte')}`;
 }
 
 function updateOutputMetrics(text, elapsed) {
   const lines = text ? text.split('\n').length : 0;
-  dom.outputMetrics.textContent =
-    `${plural(text.length, 'caractere', 'caracteres')} · ${plural(lines, 'linha', 'linhas')}`;
-  dom.timing.textContent = `${msFormat.format(elapsed)} ms`;
+  dom.outputMetrics.textContent = `${plural(text.length, 'char')} · ${plural(lines, 'line')}`;
+  dom.timing.textContent = formatMs(elapsed);
 }
 
-function updateLabels() {
-  const direction = currentDirection();
-  const labels = LABELS[prefs.tool][direction];
-  // No modo automático, o título da saída revela a direção que foi detectada.
-  const detected = direction === 'auto' && runtime.autoDirection
-    ? LABELS[prefs.tool][runtime.autoDirection]
-    : null;
+/* ----------------------------------------------------------------- popover */
 
-  dom.inputTitle.textContent = labels.input;
-  dom.outputTitle.textContent = detected ? `${detected.output} · detectado` : labels.output;
-  dom.input.placeholder = labels.placeholder;
-}
-
-/** Mostra o esmaecimento lateral quando a barra de opções tem conteúdo oculto. */
-function updateOptionsOverflow() {
-  const bar = dom.options;
-  const max = bar.scrollWidth - bar.clientWidth;
-  bar.classList.toggle('has-more-right', max > 2 && bar.scrollLeft < max - 1);
-  bar.classList.toggle('has-more-left', bar.scrollLeft > 1);
-}
-
-function updateTabs() {
-  for (const button of dom.tabButtons) {
-    const active = button.dataset.tool === prefs.tool;
-    button.classList.toggle('is-active', active);
-    button.setAttribute('aria-selected', String(active));
-    if (active) dom.workspace.setAttribute('aria-labelledby', button.id);
+function toggleOptions(force) {
+  const open = force ?? dom.popover.hidden;
+  dom.popover.hidden = !open;
+  dom.backdrop.hidden = !open;
+  dom.optionsBtn.setAttribute('aria-expanded', String(open));
+  if (open) {
+    renderOptions();
+    // Dois quadros: o primeiro aplica o layout, o segundo mede com a animação de
+    // entrada já resolvida — medir antes disso dá largura zero no indicador.
+    requestAnimationFrame(() => requestAnimationFrame(() => optionsPanel.refresh()));
+    dom.popover.querySelector('button, input, select')?.focus();
+  } else {
+    dom.optionsBtn.focus();
   }
-  requestAnimationFrame(() => {
-    const active = dom.tabButtons.find((button) => button.dataset.tool === prefs.tool);
-    if (!active || !active.offsetWidth) return;
-    dom.tabs.style.setProperty('--indicator-width', `${active.offsetWidth}px`);
-    dom.tabs.style.setProperty('--indicator-x', `${active.offsetLeft - 3}px`);
-  });
+}
+
+function resetOptions() {
+  prefs.options[prefs.to] = structuredClone(OPTION_DEFAULTS[prefs.to] || {});
+  prefs.shared = structuredClone(DEFAULT_PREFS.shared);
+  savePrefs(prefs);
+  renderOptions();
+  convert({ animate: false });
+  showToast(t('ui.toast.optionsReset'));
 }
 
 /* ----------------------------------------------------------------- ações */
 
-function prefersReducedMotion() {
-  return matchMedia('(prefers-reduced-motion: reduce)').matches;
-}
+const prefersReducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function withTransition(mutate) {
   if (!document.startViewTransition || prefersReducedMotion()) {
@@ -403,33 +315,41 @@ function withTransition(mutate) {
 }
 
 function handleOptionChange(key, value) {
-  const options = prefs[prefs.tool];
-  if (options[key] === value) return;
+  if (key in prefs.shared) {
+    if (prefs.shared[key] === value) return;
+    prefs.shared[key] = value;
+  } else if (key === 'rootType') {
+    if (runtime.rootType === value) return;
+    runtime.rootType = value;
+  } else {
+    const target = prefs.options[prefs.to];
+    if (target[key] === value) return;
+    target[key] = value;
+  }
 
-  const structural = key === 'direction';
-  const apply = () => {
-    options[key] = value;
-    if (key === 'direction') runtime.autoDirection = null;
-    savePrefs(prefs);
-    renderOptions();
-    updateLabels();
-    convert({ animate: !structural });
-  };
-
-  if (structural) withTransition(apply);
-  else apply();
+  savePrefs(prefs);
+  renderOptions();
+  convert({ animate: false });
 }
 
-function setTool(tool) {
-  if (prefs.tool === tool) return;
-  runtime.drafts[prefs.tool] = dom.input.value;
+function setFormat(side, id) {
+  const previous = side === 'from' ? prefs.from : prefs.to;
+  if (previous === id) return;
+
   withTransition(() => {
-    prefs.tool = tool;
-    dom.input.value = runtime.drafts[tool] || '';
+    if (side === 'from') {
+      runtime.drafts[previous] = dom.input.value;
+      prefs.from = id;
+      dom.input.value = runtime.drafts[id] || '';
+      runtime.detectedTypes = [];
+      runtime.rootType = '';
+    } else {
+      prefs.to = id;
+    }
+
+    renderFormatSelects();
     savePrefs(prefs);
-    updateTabs();
     renderOptions();
-    updateLabels();
     convert({ animate: false });
   });
 }
@@ -440,48 +360,73 @@ function setTheme(theme) {
   savePrefs(prefs);
 }
 
-function swapDirection() {
-  const options = prefs[prefs.tool];
-  const pairs = {
-    base64: { encode: 'decode', decode: 'encode', auto: 'encode' },
-    'json-java': { 'json-to-java': 'java-to-json', 'java-to-json': 'json-to-java' },
-  };
-  const next = pairs[prefs.tool][options.direction];
-  // O resultado atual vira a nova entrada — o caminho de volta fica natural.
-  const carry = !runtime.hasError && runtime.output ? runtime.output : null;
+/**
+ * Troca o idioma da interface e do núcleo. Reconverte no fim porque erros, avisos
+ * e o cabeçalho do código gerado são texto traduzido.
+ */
+function applyLanguage(language, { persist = true } = {}) {
+  setLanguage(language);
+  refreshFormats();
+  if (persist) {
+    prefs.language = getLanguage();
+    savePrefs(prefs);
+  }
+  applyTranslations();
+  renderFormatSelects();
+  renderOptions();
+  convert({ animate: false });
+}
 
+function cycleLanguage() {
+  const next = LANGUAGES[(LANGUAGES.indexOf(getLanguage()) + 1) % LANGUAGES.length];
+  withTransition(() => applyLanguage(next));
+}
+
+/** Inverte origem e destino; o resultado atual vira a nova entrada. */
+function swapFormats() {
+  if (!isValidPair(prefs.to, prefs.from)) {
+    showToast(t('ui.toast.cannotSwap'), 'error');
+    return;
+  }
+
+  const carry = !runtime.hasError && runtime.output ? runtime.output : null;
   dom.swapBtn.classList.toggle('is-flipped');
+
   withTransition(() => {
-    options.direction = next;
-    runtime.autoDirection = null;
+    const { from, to } = prefs;
+    prefs.from = to;
+    prefs.to = from;
     if (carry) dom.input.value = carry;
+    runtime.detectedTypes = [];
+    runtime.rootType = '';
+
+    renderFormatSelects();
     savePrefs(prefs);
     renderOptions();
-    updateLabels();
     convert({ animate: false });
   });
 }
 
 async function copyOutput() {
   if (!runtime.output) {
-    showToast('Nada para copiar ainda.', 'error');
+    showToast(t('ui.toast.nothingToCopy'), 'error');
     return;
   }
   try {
     await navigator.clipboard.writeText(runtime.output);
   } catch {
     if (!legacyCopy(runtime.output)) {
-      showToast('O navegador bloqueou a cópia.', 'error');
+      showToast(t('ui.toast.copyBlocked'), 'error');
       return;
     }
   }
   dom.copyBtn.classList.add('is-done');
-  dom.copyBtn.textContent = 'Copiado';
+  dom.copyBtn.textContent = t('ui.panel.copied');
   setTimeout(() => {
     dom.copyBtn.classList.remove('is-done');
-    dom.copyBtn.textContent = 'Copiar';
+    dom.copyBtn.textContent = t('ui.panel.copy');
   }, 1400);
-  showToast('Resultado copiado.');
+  showToast(t('ui.toast.copied'));
 }
 
 function legacyCopy(text) {
@@ -504,28 +449,27 @@ function legacyCopy(text) {
 
 function downloadOutput() {
   if (!runtime.output) {
-    showToast('Nada para baixar ainda.', 'error');
+    showToast(t('ui.toast.nothingToDownload'), 'error');
     return;
   }
-  const effectiveDirection = runtime.autoDirection || currentDirection();
-  const names = {
-    java: `${(prefs['json-java'].rootClassName || 'Root').replace(/[^\w$]/g, '') || 'Root'}.java`,
-    json: 'payload.json',
-    plain: effectiveDirection === 'encode' ? 'codificado.b64.txt' : 'decodificado.txt',
-  };
+
+  const surface = getSurface(prefs.to);
+  const base = surface.kind === 'lang'
+    ? (runtime.rootType || prefs.shared.rootName || 'Model').replace(/[^\w$]/g, '') || 'Model'
+    : 'payload';
+
   const blob = new Blob([runtime.output], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = names[runtime.language] || 'codec-studio.txt';
+  link.download = `${base}.${surface.extension}`;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  showToast(`Arquivo ${link.download} salvo.`);
+  showToast(t('ui.toast.downloaded', { name: link.download }));
 }
 
 function loadSample() {
-  const direction = currentDirection();
-  dom.input.value = SAMPLES[prefs.tool][direction] ?? '';
+  dom.input.value = t(`ui.sample.${prefs.from}`);
   convert({ animate: true });
   dom.input.focus();
 }
@@ -557,15 +501,15 @@ function showToast(message, kind = 'info') {
 async function loadFile(file) {
   if (!file) return;
   if (file.size > MAX_FILE_BYTES) {
-    showToast(`Arquivo muito grande (máx. ${MAX_FILE_BYTES / 1024 / 1024} MB).`, 'error');
+    showToast(t('ui.toast.fileTooLarge', { size: MAX_FILE_BYTES / 1024 / 1024 }), 'error');
     return;
   }
   try {
     dom.input.value = await file.text();
     convert({ animate: true });
-    showToast(`${file.name} carregado.`);
+    showToast(t('ui.toast.fileLoaded', { name: file.name }));
   } catch {
-    showToast('Não foi possível ler o arquivo.', 'error');
+    showToast(t('ui.toast.fileError'), 'error');
   }
 }
 
@@ -573,10 +517,8 @@ async function loadFile(file) {
 
 function bindEvents() {
   dom.input.addEventListener('input', scheduleConvert);
-
-  for (const button of dom.tabButtons) {
-    button.addEventListener('click', () => setTool(button.dataset.tool));
-  }
+  dom.fromSelect.addEventListener('change', () => setFormat('from', dom.fromSelect.value));
+  dom.toSelect.addEventListener('change', () => setFormat('to', dom.toSelect.value));
 
   document.addEventListener('click', (event) => {
     const trigger = event.target.closest('[data-action]');
@@ -588,32 +530,42 @@ function bindEvents() {
         dom.convertBtn.classList.add('is-pulsing');
         convert({ animate: true });
       },
-      swap: swapDirection,
+      swap: swapFormats,
       copy: copyOutput,
       download: downloadOutput,
       clear: clearAll,
       sample: loadSample,
       theme: () => setTheme(prefs.theme === 'dark' ? 'light' : 'dark'),
+      language: cycleLanguage,
       expand: openInTab,
+      options: () => toggleOptions(),
+      'options-close': () => toggleOptions(false),
+      'options-reset': resetOptions,
     };
     actions[trigger.dataset.action]?.();
   });
 
+  dom.backdrop.addEventListener('click', () => toggleOptions(false));
+
   document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !dom.popover.hidden) {
+      event.preventDefault();
+      toggleOptions(false);
+      return;
+    }
     const meta = event.ctrlKey || event.metaKey;
     if (meta && event.key === 'Enter') {
       event.preventDefault();
       convert({ animate: true });
     } else if (meta && !event.shiftKey && event.key.toLowerCase() === 'i') {
       event.preventDefault();
-      swapDirection();
+      swapFormats();
     } else if (meta && event.shiftKey && event.key.toLowerCase() === 'c') {
       event.preventDefault();
       copyOutput();
     }
   });
 
-  // Arrastar e soltar arquivos de texto
   const panel = dom.inputPanel;
   panel.addEventListener('dragover', (event) => {
     event.preventDefault();
@@ -631,23 +583,29 @@ function bindEvents() {
   document.addEventListener('dragover', (event) => event.preventDefault());
   document.addEventListener('drop', (event) => event.preventDefault());
 
-  dom.options.addEventListener('scroll', updateOptionsOverflow, { passive: true });
-
-  window.addEventListener('resize', () => {
-    updateTabs();
-    optionsBar.refresh();
-    updateOptionsOverflow();
-  });
+  window.addEventListener('resize', () => optionsPanel.refresh());
 }
 
 /* ------------------------------------------------------------------ boot */
 
 function init() {
   dom.root.dataset.theme = prefs.theme;
-  updateTabs();
+  // Preferência explícita do usuário vence; senão, segue o idioma do navegador.
+  setLanguage(prefs.language || detectLanguage());
+  refreshFormats();
+  applyTranslations();
+
+  // Uma preferência salva pode apontar para um par que não existe mais.
+  if (!getSurface(prefs.from)) prefs.from = DEFAULT_PREFS.from;
+  if (!isValidPair(prefs.from, prefs.to)) prefs.to = targetsFor(prefs.from)[0].id;
+  for (const [id, defaults] of Object.entries(OPTION_DEFAULTS)) {
+    prefs.options[id] = { ...defaults, ...(prefs.options[id] || {}) };
+  }
+
+  renderFormatSelects();
   renderOptions();
-  updateLabels();
   updateInputMetrics('');
+  clearOutput();
   bindEvents();
   dom.input.focus();
 }

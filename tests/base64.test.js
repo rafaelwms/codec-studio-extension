@@ -55,7 +55,7 @@ test('decodificação tolera espaços e quebras, e avisa', () => {
   const result = decodeText('Zm9v\n  YmFy');
   assert.equal(result.output, 'foobar');
   assert.equal(result.warnings.length, 1);
-  assert.match(result.warnings[0], /ignorad/i);
+  assert.match(result.warnings[0], /ignored/i);
 });
 
 test('modo estrito rejeita espaços', () => {
@@ -65,14 +65,16 @@ test('modo estrito rejeita espaços', () => {
 test('erros trazem posição e dica', () => {
   const error = await_throws(() => decodeText('Zm9v#YmFy'));
   assert.ok(error instanceof CodecError);
+  assert.equal(error.code, 'core.base64.invalidChar');
   assert.equal(error.position, 4);
-  assert.match(error.message, /posição 5/);
+  assert.equal(error.params.char, '#');
+  assert.equal(error.params.position, 5);
+  assert.match(error.message, /position 5/);
+  assert.ok(error.hint, 'erro deve trazer uma dica traduzida');
 
-  const lengthError = await_throws(() => decodeText('Zm9vY'));
-  assert.match(lengthError.message, /[Cc]omprimento inválido/);
-
-  const paddingError = await_throws(() => decodeText('Zm==9v'));
-  assert.match(paddingError.message, /padding/i);
+  assert.equal(await_throws(() => decodeText('Zm9vY')).code, 'core.base64.invalidLength');
+  assert.equal(await_throws(() => decodeText('Zm==9v')).code, 'core.base64.dataAfterPadding');
+  assert.equal(await_throws(() => decodeText('Zm9v====')).code, 'core.base64.invalidPadding');
 });
 
 test('conteúdo binário é sinalizado com dump hexadecimal', () => {

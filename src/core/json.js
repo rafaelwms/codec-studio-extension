@@ -1,4 +1,5 @@
 import { CodecError } from './base64.js';
+import { msg } from './messages.js';
 
 /**
  * JSON.parse com mensagem de erro localizada (linha/coluna) e trecho do problema.
@@ -14,7 +15,7 @@ import { CodecError } from './base64.js';
 export function parseJson(text) {
   const source = text.trim();
   if (!source) {
-    throw new CodecError('Nada para converter.', { hint: 'Cole ou digite um JSON no painel de entrada.' });
+    throw new CodecError('core.json.empty', { hintCode: 'core.json.empty.hint' });
   }
   try {
     return JSON.parse(source);
@@ -23,12 +24,16 @@ export function parseJson(text) {
     const located = locateError(source) || positionFromMessage(native, source);
     if (located) {
       const { line, column, index, message } = located;
-      throw new CodecError(`JSON inválido na linha ${line}, coluna ${column}.`, {
+      throw new CodecError('core.json.invalidAt', {
+        params: { line, column },
         position: index,
-        hint: `${message || cleanupMessage(native)} — trecho: ${excerpt(source, index)}`,
+        hint: msg('core.json.hint', {
+          message: message || cleanupMessage(native),
+          excerpt: excerpt(source, index),
+        }),
       });
     }
-    throw new CodecError('JSON inválido.', { hint: cleanupMessage(native) });
+    throw new CodecError('core.json.invalid', { hint: cleanupMessage(native) });
   }
 }
 
@@ -75,7 +80,7 @@ function locateError(source) {
     scanValue(state);
     skipWhitespace(state);
     if (state.index < source.length) {
-      fail(state, `Conteúdo extra depois do fim do documento ("${source[state.index]}").`);
+      fail(state, msg('core.json.scan.extraContent', { char: source[state.index] }));
     }
     return null; // o scanner não encontrou problema; deixa a mensagem nativa falar
   } catch (error) {
@@ -101,7 +106,7 @@ function skipWhitespace(state) {
 function scanValue(state) {
   skipWhitespace(state);
   const char = state.source[state.index];
-  if (char === undefined) fail(state, 'Documento terminou antes do esperado.');
+  if (char === undefined) fail(state, msg('core.json.scan.unexpectedEnd'));
   if (char === '{') return scanObject(state);
   if (char === '[') return scanArray(state);
   if (char === '"') return scanString(state);
@@ -112,7 +117,7 @@ function scanValue(state) {
       return undefined;
     }
   }
-  fail(state, `Valor inesperado começando em "${char}".`);
+  fail(state, msg('core.json.scan.unexpectedValue', { char }));
   return undefined;
 }
 
@@ -126,11 +131,11 @@ function scanObject(state) {
   for (;;) {
     skipWhitespace(state);
     if (state.source[state.index] !== '"') {
-      fail(state, 'Esperava o nome de uma chave entre aspas duplas.');
+      fail(state, msg('core.json.scan.expectedKey'));
     }
     scanString(state);
     skipWhitespace(state);
-    if (state.source[state.index] !== ':') fail(state, 'Esperava ":" depois do nome da chave.');
+    if (state.source[state.index] !== ':') fail(state, msg('core.json.scan.expectedColon'));
     state.index += 1;
     scanValue(state);
     skipWhitespace(state);
@@ -138,14 +143,14 @@ function scanObject(state) {
     if (char === ',') {
       state.index += 1;
       skipWhitespace(state);
-      if (state.source[state.index] === '}') fail(state, 'Vírgula sobrando antes de "}".');
+      if (state.source[state.index] === '}') fail(state, msg('core.json.scan.trailingCommaObject'));
       continue;
     }
     if (char === '}') {
       state.index += 1;
       return;
     }
-    fail(state, char === undefined ? 'Faltou fechar o objeto com "}".' : `Esperava "," ou "}" mas veio "${char}".`);
+    fail(state, char === undefined ? msg('core.json.scan.unclosedObject') : msg('core.json.scan.expectedCommaOrBrace', { char }));
   }
 }
 
@@ -163,14 +168,14 @@ function scanArray(state) {
     if (char === ',') {
       state.index += 1;
       skipWhitespace(state);
-      if (state.source[state.index] === ']') fail(state, 'Vírgula sobrando antes de "]".');
+      if (state.source[state.index] === ']') fail(state, msg('core.json.scan.trailingCommaArray'));
       continue;
     }
     if (char === ']') {
       state.index += 1;
       return;
     }
-    fail(state, char === undefined ? 'Faltou fechar o array com "]".' : `Esperava "," ou "]" mas veio "${char}".`);
+    fail(state, char === undefined ? msg('core.json.scan.unclosedArray') : msg('core.json.scan.expectedCommaOrBracket', { char }));
   }
 }
 
@@ -186,15 +191,15 @@ function scanString(state) {
       state.index += 1;
       return;
     }
-    if (char === '\n') fail(state, 'Quebra de linha dentro de uma string (use \\n).');
+    if (char === '\n') fail(state, msg('core.json.scan.newlineInString'));
     state.index += 1;
   }
-  fail(state, 'String sem aspas de fechamento.');
+  fail(state, msg('core.json.scan.unclosedString'));
 }
 
 function scanNumber(state) {
   const match = /^-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?/.exec(state.source.slice(state.index));
-  if (!match || match[0].length === 0) fail(state, 'Número mal formado.');
+  if (!match || match[0].length === 0) fail(state, msg('core.json.scan.badNumber'));
   state.index += match[0].length;
 }
 

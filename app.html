@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" data-theme="dark">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -17,38 +17,23 @@
   <div class="app">
     <header class="topbar">
       <div class="brand">
-        <svg class="brand__mark" viewBox="0 0 32 32" aria-hidden="true">
-          <defs>
-            <linearGradient id="brandGradient" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stop-color="var(--accent)"/>
-              <stop offset="100%" stop-color="var(--accent-2)"/>
-            </linearGradient>
-          </defs>
-          <rect x="1.5" y="1.5" width="29" height="29" rx="9" fill="none" stroke="url(#brandGradient)" stroke-width="2"/>
-          <path d="M12.5 9.5c-2.6 0-3 1.6-3 3.4s-.4 3.1-2 3.1c1.6 0 2 1.3 2 3.1s.4 3.4 3 3.4"
-                fill="none" stroke="url(#brandGradient)" stroke-width="2" stroke-linecap="round"/>
-          <path d="M19.5 9.5c2.6 0 3 1.6 3 3.4s.4 3.1 2 3.1c-1.6 0-2 1.3-2 3.1s-.4 3.4-3 3.4"
-                fill="none" stroke="url(#brandGradient)" stroke-width="2" stroke-linecap="round"/>
-        </svg>
+        <img class="brand__mark" src="icons/icon128.png" width="28" height="28" alt="" aria-hidden="true">
         <div class="brand__text">
           <h1>Codec Studio</h1>
           <p class="brand__tag">
             <span class="dot" aria-hidden="true"></span>
-            100% offline · sem permissões
+            <span data-i18n="ui.brand.tagline">100% offline · no permissions</span>
           </p>
         </div>
       </div>
 
-      <nav class="tabs" role="tablist" aria-label="Ferramenta">
-        <span class="tabs__indicator" aria-hidden="true"></span>
-        <button class="tab is-active" role="tab" type="button" id="tab-base64"
-                data-tool="base64" aria-selected="true" aria-controls="workspace">Base64</button>
-        <button class="tab" role="tab" type="button" id="tab-json-java"
-                data-tool="json-java" aria-selected="false" aria-controls="workspace">JSON ⇄ Java</button>
-      </nav>
-
       <div class="topbar__actions">
-        <button class="icon-btn" type="button" data-action="theme" aria-label="Alternar tema claro/escuro" title="Alternar tema (T)">
+        <button class="icon-btn icon-btn--text" type="button" data-action="language"
+                data-i18n-aria-label="ui.action.language" data-i18n-title="ui.action.language">
+          <span data-i18n="ui.action.languageCode">EN</span>
+        </button>
+        <button class="icon-btn" type="button" data-action="theme"
+                data-i18n-aria-label="ui.action.theme" data-i18n-title="ui.action.theme">
           <svg viewBox="0 0 24 24" aria-hidden="true" class="icon-sun">
             <circle cx="12" cy="12" r="4.2"/>
             <path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.2 5.2l1.9 1.9M16.9 16.9l1.9 1.9M18.8 5.2l-1.9 1.9M7.1 16.9l-1.9 1.9"/>
@@ -57,7 +42,8 @@
             <path d="M20 14.2A8.2 8.2 0 0 1 9.8 4 8.2 8.2 0 1 0 20 14.2Z"/>
           </svg>
         </button>
-        <button class="icon-btn" type="button" data-action="expand" aria-label="Abrir em uma aba" title="Abrir em uma aba">
+        <button class="icon-btn" type="button" data-action="expand"
+                data-i18n-aria-label="ui.action.expand" data-i18n-title="ui.action.expand">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M14 4h6v6M20 4l-8.5 8.5M18 14.5V19a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 19V8a1.5 1.5 0 0 1 1.5-1.5H10"/>
           </svg>
@@ -65,53 +51,72 @@
       </div>
     </header>
 
-    <section class="options" id="options" aria-label="Opções de conversão"></section>
-
-    <main class="workspace" id="workspace" role="tabpanel" aria-labelledby="tab-base64">
+    <main class="workspace" id="workspace">
       <article class="panel panel--input">
         <header class="panel__head">
-          <h2 class="panel__title" id="input-title">Entrada</h2>
+          <label class="format-select">
+            <span class="visually-hidden" id="from-label" data-i18n="ui.format.from">Convert from</span>
+            <select class="format-select__control" id="from-format" aria-labelledby="from-label"></select>
+            <svg class="format-select__chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          </label>
           <div class="panel__tools">
-            <button class="ghost-btn" type="button" data-action="sample">Exemplo</button>
-            <button class="ghost-btn" type="button" data-action="clear">Limpar</button>
+            <button class="ghost-btn" type="button" data-action="sample" data-i18n="ui.panel.sample">Example</button>
+            <button class="ghost-btn" type="button" data-action="clear" data-i18n="ui.panel.clear">Clear</button>
           </div>
         </header>
         <div class="panel__body">
           <textarea id="input" class="editor" spellcheck="false" autocomplete="off" autocapitalize="off"
-                    aria-labelledby="input-title" placeholder="Digite, cole ou solte um arquivo aqui…"></textarea>
-          <div class="dropzone" aria-hidden="true"><span>Solte o arquivo para carregar</span></div>
+                    data-i18n-aria-label="ui.format.from" data-i18n-placeholder="ui.input.placeholder"></textarea>
+          <div class="dropzone" aria-hidden="true"><span data-i18n="ui.dropzone">Drop the file to load it</span></div>
         </div>
         <footer class="panel__foot">
-          <span class="metric" id="input-metrics">0 caracteres</span>
+          <span class="metric" id="input-metrics"></span>
         </footer>
       </article>
 
       <div class="switchboard">
-        <button class="convert-btn" type="button" data-action="convert" title="Converter (Ctrl/⌘ + Enter)" aria-label="Converter">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M4 9h13M13 5l4 4-4 4M20 15H7M11 11l-4 4 4 4"/>
+        <button class="convert-btn" type="button" data-action="convert"
+                data-i18n-title="ui.convert.title" data-i18n-aria-label="ui.convert">
+          <svg viewBox="0 0 32 32" aria-hidden="true">
+            <g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 12.5h11"/><path d="M17 9.5l3 3-3 3"/>
+              <path d="M23 19.5H12"/><path d="M15 16.5l-3 3 3 3"/>
+            </g>
           </svg>
           <span class="convert-btn__pulse" aria-hidden="true"></span>
         </button>
-        <button class="swap-btn" type="button" data-action="swap" title="Inverter direção (Ctrl/⌘ + I)" aria-label="Inverter direção">
+        <button class="swap-btn" type="button" data-action="swap"
+                data-i18n-title="ui.swap.title" data-i18n-aria-label="ui.swap">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M7 4v14M7 18l-3-3M7 18l3-3M17 20V6M17 6l-3 3M17 6l3 3"/>
           </svg>
+        </button>
+        <button class="swap-btn options-btn" type="button" data-action="options" aria-expanded="false"
+                aria-controls="options-popover" data-i18n-title="ui.options.title" data-i18n-aria-label="ui.options.title">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>
+          </svg>
+          <span class="options-btn__badge" id="options-count" aria-hidden="true"></span>
         </button>
       </div>
 
       <article class="panel panel--output" id="output-panel">
         <header class="panel__head">
-          <h2 class="panel__title" id="output-title">Saída</h2>
+          <label class="format-select">
+            <span class="visually-hidden" id="to-label" data-i18n="ui.format.to">Convert to</span>
+            <select class="format-select__control" id="to-format" aria-labelledby="to-label"></select>
+            <svg class="format-select__chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          </label>
           <div class="panel__tools">
-            <button class="ghost-btn" type="button" data-action="download">Baixar</button>
-            <button class="ghost-btn ghost-btn--primary" type="button" data-action="copy">Copiar</button>
+            <button class="ghost-btn" type="button" data-action="download" data-i18n="ui.panel.download">Download</button>
+            <button class="ghost-btn ghost-btn--primary" type="button" data-action="copy" data-i18n="ui.panel.copy">Copy</button>
           </div>
         </header>
         <div class="panel__body">
-          <pre class="editor editor--output" id="output" tabindex="0" aria-labelledby="output-title" aria-live="polite"></pre>
+          <pre class="editor editor--output" id="output" tabindex="0" data-i18n-aria-label="ui.format.to" aria-live="polite"></pre>
           <div class="scanline" aria-hidden="true"></div>
-          <div class="placeholder" id="placeholder">O resultado aparece aqui.</div>
+          <div class="placeholder" id="placeholder" data-i18n="ui.placeholder.output">The result shows up here.</div>
           <div class="error-card" id="error-card" hidden>
             <svg viewBox="0 0 24 24" aria-hidden="true" class="error-card__icon">
               <circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.4v.1"/>
@@ -123,7 +128,7 @@
           </div>
         </div>
         <footer class="panel__foot">
-          <span class="metric" id="output-metrics">—</span>
+          <span class="metric" id="output-metrics"></span>
           <span class="metric metric--time" id="timing"></span>
         </footer>
       </article>
@@ -134,13 +139,34 @@
     <footer class="statusbar">
       <span class="statusbar__item statusbar__item--shield">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5.5c0 4.3-2.9 8.2-7 9.5-4.1-1.3-7-5.2-7-9.5V6l7-3Z"/><path d="M9 12.2l2.2 2.2 4-4.4"/></svg>
-        Nada sai do seu navegador
+        <span data-i18n="ui.status.shield">Nothing leaves your browser</span>
       </span>
       <span class="statusbar__hint">
-        <kbd>Ctrl</kbd>+<kbd>Enter</kbd> converter · <kbd>Ctrl</kbd>+<kbd>I</kbd> inverter · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> copiar
+        <kbd>Ctrl</kbd>+<kbd>Enter</kbd> <span data-i18n="ui.status.convert">convert</span> ·
+        <kbd>Ctrl</kbd>+<kbd>I</kbd> <span data-i18n="ui.status.swap">swap</span> ·
+        <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> <span data-i18n="ui.status.copy">copy</span>
       </span>
     </footer>
+
+    <p class="colophon" data-i18n="ui.footer.copyright">© 2026 Rafael WMS</p>
   </div>
+
+  <!-- Opções do formato de destino. Fica fora do fluxo para não espremer o layout. -->
+  <div class="popover" id="options-popover" role="dialog" aria-modal="false" hidden
+       data-i18n-aria-label="ui.options.title">
+    <header class="popover__head">
+      <h2 class="popover__title" id="options-title" data-i18n="ui.options.title">Options</h2>
+      <button class="icon-btn icon-btn--small" type="button" data-action="options-close"
+              data-i18n-aria-label="ui.options.close" data-i18n-title="ui.options.close">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </header>
+    <div class="popover__body" id="options"></div>
+    <footer class="popover__foot">
+      <button class="ghost-btn" type="button" data-action="options-reset" data-i18n="ui.options.reset">Reset</button>
+    </footer>
+  </div>
+  <div class="popover-backdrop" id="popover-backdrop" hidden></div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 

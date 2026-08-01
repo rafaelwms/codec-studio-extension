@@ -9,15 +9,31 @@
  * Todas as funções são puras e funcionam tanto no navegador quanto no Node.
  */
 
+import { msg } from './messages.js';
+
 const ALPHABET_STD = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 const ALPHABET_URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
-/** Erro de conversão com contexto legível para a interface. */
+/**
+ * Erro de conversão com contexto legível para a interface.
+ *
+ * `code` identifica o problema de forma estável e independente de idioma — é por ele
+ * que os testes verificam, e é ele que a interface usa se precisar reagir a um caso
+ * específico. `message` e `hint` já vêm traduzidos no idioma ativo.
+ */
 export class CodecError extends Error {
-  constructor(message, details = {}) {
-    super(message);
+  /**
+   * @param {string} code chave no catálogo de mensagens
+   * @param {{params?: object, hintCode?: string, hintParams?: object, position?: number, hint?: string}} [details]
+   */
+  constructor(code, details = {}) {
+    super(msg(code, details.params));
     this.name = 'CodecError';
-    /** @type {string|undefined} */ this.hint = details.hint;
+    /** @type {string} */ this.code = code;
+    /** @type {object|undefined} */ this.params = details.params;
+    /** @type {string|undefined} */ this.hint = details.hintCode
+      ? msg(details.hintCode, details.hintParams || details.params)
+      : details.hint;
     /** @type {number|undefined} */ this.position = details.position;
   }
 }
@@ -110,48 +126,51 @@ export function base64ToBytes(input, options = {}) {
       continue;
     }
     if (code > 127 || LOOKUP[code] === -1) {
-      throw new CodecError(`Caractere inválido para Base64: "${char}" na posição ${i + 1}.`, {
+      throw new CodecError('core.base64.invalidChar', {
+        params: { char, position: i + 1 },
+        hintCode: 'core.base64.invalidChar.hint',
         position: i,
-        hint: 'O alfabeto Base64 aceita A–Z, a–z, 0–9, "+" e "/" (ou "-" e "_" no modo URL-safe).',
       });
     }
     if (char === '-' || char === '_') sawUrlSafe = true;
     if (char === '+' || char === '/') sawStandard = true;
     if (padCount > 0) {
-      throw new CodecError(`Dados depois do padding "=" na posição ${i + 1}.`, {
+      throw new CodecError('core.base64.dataAfterPadding', {
+        params: { position: i + 1 },
+        hintCode: 'core.base64.dataAfterPadding.hint',
         position: i,
-        hint: 'O caractere "=" só pode aparecer no final da string.',
       });
     }
     sanitized += char;
   }
 
   if (sawWhitespace) {
-    if (strict) throw new CodecError('Espaços/quebras de linha não são permitidos no modo estrito.');
-    warnings.push('Espaços e quebras de linha foram ignorados.');
+    if (strict) throw new CodecError('core.base64.whitespaceStrict');
+    warnings.push(msg('core.base64.whitespaceIgnored'));
   }
   if (sawUrlSafe && sawStandard) {
-    if (strict) throw new CodecError('A entrada mistura os alfabetos padrão ("+/") e URL-safe ("-_").');
-    warnings.push('A entrada mistura os alfabetos padrão e URL-safe; ambos foram aceitos.');
+    if (strict) throw new CodecError('core.base64.mixedAlphabetStrict');
+    warnings.push(msg('core.base64.mixedAlphabet'));
   }
   if (padCount > 2) {
-    throw new CodecError(`Padding inválido: ${padCount} caracteres "=" no final.`, {
-      hint: 'Base64 admite no máximo dois "=".',
+    throw new CodecError('core.base64.invalidPadding', {
+      params: { count: padCount },
+      hintCode: 'core.base64.invalidPadding.hint',
     });
   }
 
   const remainder = sanitized.length % 4;
   if (remainder === 1) {
-    throw new CodecError('Comprimento inválido: sobra um único caractere Base64 no final.', {
-      hint: 'Uma string Base64 válida tem comprimento múltiplo de 4 (desconsiderando o padding).',
+    throw new CodecError('core.base64.invalidLength', {
+      hintCode: 'core.base64.invalidLength.hint',
     });
   }
   if (remainder !== 0) {
-    if (strict) throw new CodecError('Padding "=" ausente no modo estrito.');
-    if (padCount === 0) warnings.push('Padding "=" ausente; a decodificação foi feita mesmo assim.');
+    if (strict) throw new CodecError('core.base64.missingPaddingStrict');
+    if (padCount === 0) warnings.push(msg('core.base64.missingPadding'));
   }
   if (padCount > 0 && (sanitized.length + padCount) % 4 !== 0) {
-    warnings.push('A quantidade de "=" no final não fecha um bloco de 4 caracteres.');
+    warnings.push(msg('core.base64.oddPadding'));
   }
 
   const byteLength = Math.floor((sanitized.length * 3) / 4);
@@ -202,7 +221,7 @@ export function decodeText(input, options = {}) {
   } catch {
     binary = true;
     output = new TextDecoder('utf-8').decode(bytes); // substitui bytes inválidos por U+FFFD
-    warnings.push('Os bytes decodificados não formam um texto UTF-8 válido — provavelmente é conteúdo binário.');
+    warnings.push(msg('core.base64.notUtf8'));
   }
 
   return { output, bytes: bytes.length, warnings, binary, hex: binary ? toHex(bytes, 512) : '' };

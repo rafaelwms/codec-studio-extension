@@ -1,14 +1,42 @@
 # Codec Studio
 
-Extensão de navegador (Chrome e Edge) para converter texto entre formatos de código.
-Funciona **100% offline**, **sem permissões** e **sem nenhuma dependência externa**.
+**[▸ Instalar na Chrome Web Store](https://chromewebstore.google.com/detail/olkgemdfepbfnlgnmopmakdojoidpmbk)**
+· também funciona no Microsoft Edge
 
-| | |
+Extensão de navegador (Chrome e Edge) para converter dados e modelos entre formatos.
+Funciona **100% offline**, **sem permissões** e **sem nenhuma dependência externa**.
+Interface em **inglês e português**, seguindo o idioma do navegador.
+
+## Formatos
+
+**Dados:** JSON · YAML
+**Linguagens:** Java · C# · TypeScript · Dart · Swift · Go
+**Texto:** Texto simples ⇄ Base64
+
+Qualquer formato de dados ou linguagem converte para qualquer outro — **56 combinações**.
+Isso não vem de 56 conversores: cada formato tem um *leitor* (formato → modelo) e um
+*escritor* (modelo → formato), e o modelo intermediário faz o resto. Acrescentar uma
+linguagem nova é acrescentar um arquivo em [src/core/formats/](src/core/formats).
+
+| Conversão | O que acontece |
 |---|---|
-| **Base64** | Codificar / decodificar UTF-8, alfabeto padrão ou URL-safe, padding opcional, quebra MIME em 76 colunas, modo estrito, detecção automática de direção e dump hexadecimal para conteúdo binário |
-| **JSON ⇄ Java** | JSON → `record`, POJO ou Lombok (com Jackson, `java.time`, classes aninhadas) e Java → JSON de exemplo |
+| **Dados → Linguagem** | Infere os tipos do documento e gera as classes: `record`, POJO, struct, interface… |
+| **Linguagem → Dados** | Lê as declarações e monta um documento de exemplo coerente com cada tipo |
+| **Linguagem → Linguagem** | Traduz o modelo de uma para a outra, com as convenções de cada uma |
+| **Dados → Dados** | Converte o seu documento preservando os valores reais (JSON ⇄ YAML) |
+| **Texto ⇄ Base64** | Codifica e decodifica com UTF-8 correto, alfabeto URL-safe e dump hexadecimal para binário |
 
 ---
+
+> **Publicando na Chrome Web Store?** Todos os textos do formulário, os assets de imagem e o
+> passo a passo estão em [STORE.md](STORE.md). A política de privacidade exigida pela loja
+> está em [PRIVACY.md](PRIVACY.md).
+
+## Requisitos
+
+Chrome ou Edge **120+** (`minimum_chrome_version` no manifesto). O limite vem do
+`mask-image` sem prefixo, usado na animação de revelação do resultado e no esmaecimento da
+barra de opções — abaixo dessa versão a interface funcionaria, mas sem esses efeitos.
 
 ## Instalação (modo desenvolvedor)
 
@@ -37,7 +65,7 @@ Não é uma promessa de marketing; é o que o código permite:
 - **CSP restritiva** (`default-src 'none'; connect-src 'none'`) — o próprio navegador impede
   qualquer requisição de rede a partir da extensão, mesmo que um bug tentasse fazê-la.
 - **Zero dependências** — nenhum `node_modules`, nenhuma CDN, nenhuma fonte remota, nenhum
-  analytics. Todo o código é legível neste repositório (~2.400 linhas, sem build step).
+  analytics. Todo o código é legível neste repositório, sem build step.
 - **Sem `innerHTML`, sem `eval`, sem `new Function`** — o texto que você cola nunca é
   interpretado como HTML ou código. O realce de sintaxe constrói elementos DOM e preenche
   `textContent`, o que torna qualquer entrada inerte por construção.
@@ -100,43 +128,74 @@ cíclicas viram `null` com aviso. Os valores de exemplo seguem heurísticas por 
 ## Desenvolvimento
 
 ```bash
-npm test          # 53 testes em node:test, sem dependências
-npm run build     # gera dist/ + zip para as lojas
-npm run icons     # regenera os PNGs a partir da geometria em scripts/make-icons.mjs
-npm run serve     # http://localhost:4173/app.html para trabalhar a UI fora da extensão
+npm test           # 86 testes em node:test, sem dependências
+npm run build      # gera dist/ + zip para as lojas
+npm run icons      # regenera os PNGs a partir da geometria em scripts/make-icons.mjs
+npm run serve      # http://localhost:4173/app.html para trabalhar a UI fora da extensão
+npm run assets     # capturas 1280×800 e tiles da loja (precisa do serve rodando)
 ```
 
 A lógica de conversão (`src/core/`) não toca no DOM e é testada diretamente pelo Node; a
-interface (`src/ui/`) só orquestra. Por isso a mesma página abre como popup e como aba, e os
-mesmos módulos rodam nos testes.
+interface (`src/ui/`) só orquestra. Por isso a mesma página abre como popup e como aba, e
+os mesmos módulos rodam nos testes.
+
+**Idiomas.** Os catálogos são módulos ES importados estaticamente — não há `fetch`, o que
+respeita a CSP e mantém tudo funcionando fora do contexto de extensão. O núcleo não conhece
+a interface: ele lança erros com um `code` estável (`core.base64.invalidChar`) e pede o
+texto ao catálogo ativo. Os testes verificam o código, que não muda com o idioma, e uma
+suíte dedicada garante que `en` e `pt-BR` tenham as mesmas chaves e os mesmos placeholders.
 
 ```
-manifest.json          MV3, zero permissões, CSP restritiva
-app.html               popup e aba (o layout troca por media query em 801px)
-styles/app.css         @layer, color-mix(), @property, container-friendly, temas claro/escuro
-src/core/base64.js     codec próprio (sem btoa/atob), erros com posição
-src/core/json.js       JSON.parse + localizador de erro com linha/coluna
-src/core/json-to-java.js
-src/core/java-parser.js  varredura de declarações Java
-src/core/java-to-json.js
-src/ui/                main, options (spec declarativa), highlight, prefs
-tests/                 base64, json-to-java, java-to-json
+manifest.json            MV3, zero permissões, CSP restritiva
+app.html                 popup e aba (o layout se adapta por media query)
+styles/app.css           @layer, color-mix(), @property, temas claro/escuro
+src/core/ir.js           modelo intermediário — o centro de tudo
+src/core/convert.js      orquestrador: ler de um formato, escrever no outro
+src/core/data-model.js   dados ⇄ modelo (inferência de tipos e exemplos)
+src/core/parse-utils.js  varredura compartilhada pelos parsers de linguagem
+src/core/formats/        um arquivo por formato: json, yaml, java, csharp,
+                         typescript, dart, swift, go
+src/core/base64.js       codec próprio (sem btoa/atob), erros com posição
+src/core/messages.js     tradutor injetável usado pelo núcleo
+src/locales/             catálogos en e pt-BR (interface + núcleo)
+src/ui/                  main, surfaces, options, highlight, prefs, i18n
+_locales/                nome e descrição para a loja localizar sozinha
+tests/                   base64, convert, json-to-java, java-to-json, i18n
 ```
 
 ### Design
 
-Tudo é CSS nativo, sem framework: camadas `@layer`, `color-mix()` para derivar toda a paleta
-de três cores de acento, `@property` para animar gradiente cônico e a máscara de revelação,
-`:has()` para estados, e **View Transitions** ao trocar de ferramenta ou inverter a direção.
-A conversão dispara uma varredura luminosa no painel e uma revelação em máscara diagonal do
-resultado. Tudo respeita `prefers-reduced-motion`.
+Paleta derivada do [NanoUrls](https://nanourls.com): verde-limão `#b3e600` sobre grafite,
+com um acento único carregando a identidade. Tudo é CSS nativo, sem framework: camadas
+`@layer`, `color-mix()` para derivar a paleta inteira do acento, `@property` para animar o
+gradiente cônico e a máscara de revelação, `:has()` para estados, e **View Transitions** ao
+trocar de formato. Tudo respeita `prefers-reduced-motion`.
+
+O tema claro não usa o mesmo verde: `#b3e600` não alcança contraste suficiente sobre branco,
+então a versão clara usa `#5f8a00` — mesma matiz, luminosidade adequada.
+
+**Responsividade.** A barra de opções fixa foi substituída por um popover justamente porque
+ela precisava caber no pior caso e estourava a janela. Abaixo de 720px os painéis empilham;
+abaixo de 480px a marca vira só o símbolo. Em nenhuma largura há rolagem horizontal.
 
 ---
 
 ## Limitações conhecidas
 
-- O parser Java lê a *forma* dos tipos, não compila: código com sintaxe inválida pode ser
-  parcialmente interpretado em vez de rejeitado.
-- Herança não é resolvida — campos de uma superclasse não aparecem no JSON gerado.
+- Os parsers de linguagem leem a *forma* dos tipos, não compilam: código com sintaxe
+  inválida pode ser parcialmente interpretado em vez de rejeitado.
+- Herança não é resolvida — campos de uma superclasse não entram no modelo.
+- O YAML cobre o subconjunto usado em documentos reais, mas **não** resolve âncoras (`&`),
+  aliases (`*`) nem merge keys (`<<`); nesses casos o conversor avisa em vez de adivinhar.
+- Conversões entre linguagens preservam a *estrutura*, não a lógica: métodos, construtores
+  e anotações que não descrevem serialização são ignorados por construção.
 - Acima de 400 mil caracteres a conversão automática é desligada (use o botão Converter);
   acima de 160 mil o realce de sintaxe é suprimido para manter a interface fluida.
+
+---
+
+## Licença
+
+[MIT](LICENSE) © 2026 Rafael WMS — uso livre, inclusive comercial, bastando
+manter o aviso de copyright. Há uma [tradução informativa em português](LICENSE.pt-BR.md);
+o texto em inglês é o que tem validade jurídica.

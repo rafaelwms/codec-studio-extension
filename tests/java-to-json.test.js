@@ -100,7 +100,7 @@ test('coleções, mapas, Optional e arrays', () => {
   assert.ok(Array.isArray(value.tags) && typeof value.tags[0] === 'string');
   assert.ok(Array.isArray(value.ids) && typeof value.ids[0] === 'number');
   assert.equal(typeof value.totals, 'object');
-  assert.equal(typeof value.totals.chave, 'number');
+  assert.equal(typeof Object.values(value.totals)[0], 'number');
   assert.equal(typeof value.coupon, 'string');
   assert.ok(Array.isArray(value.weights));
   assert.ok(Array.isArray(value.grid) && Array.isArray(value.grid[0]));
@@ -113,8 +113,9 @@ test('genéricos aninhados preservam o tipo interno', () => {
     }
     class Item { private String sku; }
   `);
-  assert.ok(Array.isArray(value.grouped.chave));
-  assert.deepEqual(Object.keys(value.grouped.chave[0]), ['sku']);
+  const grouped = Object.values(value.grouped)[0];
+  assert.ok(Array.isArray(grouped));
+  assert.deepEqual(Object.keys(grouped[0]), ['sku']);
 });
 
 test('classes aninhadas e referenciadas são resolvidas', () => {
@@ -167,7 +168,7 @@ test('referência cíclica vira null com aviso', () => {
   `);
   const value = JSON.parse(result.output);
   assert.equal(value.parent, null);
-  assert.ok(result.warnings.some((warning) => /cíclica/.test(warning)));
+  assert.ok(result.warnings.some((warning) => /[Cc]yclic/.test(warning)));
 });
 
 test('comentários (linha, bloco e javadoc) são ignorados', () => {

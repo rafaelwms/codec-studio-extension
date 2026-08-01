@@ -1,158 +1,175 @@
 /**
- * Barra de opções: especificação declarativa + construção dos controles.
+ * Opções de conversão.
  *
- * Os controles são criados por API DOM (nunca innerHTML). A barra só é
- * reconstruída quando a *estrutura* muda (campos que aparecem/somem, lista de
- * tipos detectados); caso contrário apenas sincroniza valores — assim o foco do
- * teclado e a posição do cursor nos campos de texto são preservados.
+ * Cada formato de destino tem o seu conjunto — não faz sentido oferecer "Lombok"
+ * quando o alvo é Go. As opções vivem num popover justamente porque variam: uma
+ * barra fixa teria de caber no pior caso e estourava a janela.
+ *
+ * Os controles são criados por API DOM (nunca innerHTML).
  */
 
-export const SPECS = {
+import { getLanguage, t } from './i18n.js';
+
+const segmented = (key, label, options, extra = {}) =>
+  ({ type: 'segmented', key, label, options, ...extra });
+const toggle = (key, label, extra = {}) => ({ type: 'switch', key, label, ...extra });
+const text = (key, label, placeholder, extra = {}) =>
+  ({ type: 'text', key, label, placeholder, ...extra });
+
+/** Opções específicas de cada formato de destino. */
+export const TARGET_OPTIONS = {
   base64: [
-    {
-      type: 'segmented',
-      key: 'direction',
-      label: 'Direção',
-      options: [
-        { id: 'encode', label: 'Codificar' },
-        { id: 'decode', label: 'Decodificar' },
-        { id: 'auto', label: 'Auto' },
-      ],
-    },
-    { type: 'separator' },
-    {
-      type: 'segmented',
-      key: 'alphabet',
-      label: 'Alfabeto',
-      options: [
-        { id: 'standard', label: 'Padrão' },
-        { id: 'url', label: 'URL-safe' },
-      ],
-      when: (state) => state.direction !== 'decode',
-    },
-    { type: 'switch', key: 'padding', label: 'Padding =', when: (state) => state.direction !== 'decode' },
-    { type: 'switch', key: 'wrap', label: 'Quebrar em 76', when: (state) => state.direction !== 'decode' },
-    { type: 'switch', key: 'strict', label: 'Modo estrito', when: (state) => state.direction !== 'encode' },
+    segmented('alphabet', 'ui.opt.alphabet', [
+      { id: 'standard', label: 'ui.opt.standard' },
+      { id: 'url', label: 'ui.opt.urlSafe' },
+    ]),
+    toggle('padding', 'ui.opt.padding'),
+    toggle('wrap', 'ui.opt.wrap'),
   ],
 
-  'json-java': [
-    {
-      type: 'segmented',
-      key: 'direction',
-      label: 'Direção',
-      options: [
-        { id: 'json-to-java', label: 'JSON → Java' },
-        { id: 'java-to-json', label: 'Java → JSON' },
-      ],
-    },
-    { type: 'separator' },
-    {
-      type: 'segmented',
-      key: 'style',
-      label: 'Estilo',
-      options: [
-        { id: 'record', label: 'Record' },
-        { id: 'pojo', label: 'POJO' },
-        { id: 'lombok', label: 'Lombok' },
-      ],
-      when: (state) => state.direction === 'json-to-java',
-    },
-    {
-      type: 'text',
-      key: 'rootClassName',
-      label: 'Classe',
-      placeholder: 'Root',
-      width: 96,
-      when: (state) => state.direction === 'json-to-java',
-    },
-    {
-      type: 'text',
-      key: 'packageName',
-      label: 'Package',
-      placeholder: 'com.exemplo',
-      width: 128,
-      when: (state) => state.direction === 'json-to-java',
-    },
-    { type: 'switch', key: 'jackson', label: 'Jackson', when: (state) => state.direction === 'json-to-java' },
-    {
-      type: 'switch',
-      key: 'primitives',
-      label: 'Primitivos',
-      when: (state) => state.direction === 'json-to-java' && state.style !== 'record',
-    },
-    { type: 'switch', key: 'dateTypes', label: 'java.time', when: (state) => state.direction === 'json-to-java' },
-    {
-      type: 'switch',
-      key: 'separateFiles',
-      label: 'Arquivos separados',
-      when: (state) => state.direction === 'json-to-java',
-    },
-    {
-      type: 'segmented',
-      key: 'values',
-      label: 'Valores',
-      options: [
-        { id: 'example', label: 'Exemplo' },
-        { id: 'empty', label: 'Vazios' },
-      ],
-      when: (state) => state.direction === 'java-to-json',
-    },
-    {
-      type: 'select',
-      key: 'rootType',
-      label: 'Raiz',
-      dynamic: 'detectedTypes',
-      when: (state) => state.direction === 'java-to-json' && (state.detectedTypes || []).length > 1,
-    },
+  text: [toggle('strict', 'ui.opt.strict')],
+
+  json: [
+    segmented('values', 'ui.opt.values', [
+      { id: 'example', label: 'ui.opt.example' },
+      { id: 'empty', label: 'ui.opt.empty' },
+    ], { when: (state) => state.fromFamily === 'lang' }),
+  ],
+
+  yaml: [
+    segmented('values', 'ui.opt.values', [
+      { id: 'example', label: 'ui.opt.example' },
+      { id: 'empty', label: 'ui.opt.empty' },
+    ], { when: (state) => state.fromFamily === 'lang' }),
+  ],
+
+  java: [
+    segmented('style', 'ui.opt.style', [
+      { id: 'record', label: 'ui.opt.record' },
+      { id: 'pojo', label: 'ui.opt.pojo' },
+      { id: 'lombok', label: 'ui.opt.lombok' },
+    ]),
+    text('packageName', 'ui.opt.package', 'ui.opt.packagePlaceholder'),
+    toggle('jackson', 'ui.opt.jackson'),
+    toggle('jacksonAll', 'ui.opt.jacksonAll', { when: (state) => state.jackson }),
+    toggle('primitives', 'ui.opt.primitives', { when: (state) => state.style !== 'record' }),
+    toggle('separateFiles', 'ui.opt.separateFiles'),
+  ],
+
+  csharp: [
+    segmented('style', 'ui.opt.style', [
+      { id: 'class', label: 'ui.opt.class' },
+      { id: 'record', label: 'ui.opt.record' },
+      { id: 'struct', label: 'ui.opt.struct' },
+    ]),
+    text('namespaceName', 'ui.opt.namespace', 'ui.opt.namespacePlaceholder'),
+    toggle('jsonAttributes', 'ui.opt.jsonAttributes'),
+    toggle('jsonAttributesAll', 'ui.opt.jsonAttributesAll', { when: (state) => state.jsonAttributes }),
+    toggle('nullableAnnotations', 'ui.opt.nullable'),
+  ],
+
+  typescript: [
+    segmented('style', 'ui.opt.style', [
+      { id: 'interface', label: 'ui.opt.interface' },
+      { id: 'type', label: 'ui.opt.typeAlias' },
+      { id: 'class', label: 'ui.opt.class' },
+      { id: 'angular', label: 'ui.opt.angular' },
+    ]),
+    toggle('exportTypes', 'ui.opt.exportTypes'),
+    toggle('optionalMarker', 'ui.opt.optionalMarker'),
+    toggle('readonlyFields', 'ui.opt.readonly'),
+    toggle('useDate', 'ui.opt.useDate'),
+  ],
+
+  dart: [
+    toggle('finalFields', 'ui.opt.finalFields'),
+    toggle('jsonMethods', 'ui.opt.jsonMethods'),
+    toggle('namedParameters', 'ui.opt.namedParameters'),
+  ],
+
+  swift: [
+    segmented('style', 'ui.opt.style', [
+      { id: 'struct', label: 'ui.opt.struct' },
+      { id: 'class', label: 'ui.opt.class' },
+    ]),
+    toggle('codable', 'ui.opt.codable'),
+    toggle('letConstants', 'ui.opt.letConstants'),
+    toggle('codingKeys', 'ui.opt.codingKeys'),
+  ],
+
+  go: [
+    text('packageName', 'ui.opt.package', 'ui.opt.goPackagePlaceholder'),
+    toggle('jsonTags', 'ui.opt.jsonTags'),
+    toggle('omitempty', 'ui.opt.omitempty', { when: (state) => state.jsonTags }),
+    toggle('pointerOptionals', 'ui.opt.pointerOptionals'),
+    toggle('useTime', 'ui.opt.useTime'),
   ],
 };
+
+/** Opções que dependem do par, não do destino sozinho. */
+export const SHARED_OPTIONS = [
+  // Só há um nome de tipo para escolher quando a origem não nomeia tipos.
+  text('rootName', 'ui.opt.className', 'ui.opt.classNamePlaceholder', {
+    when: (state) => state.fromFamily === 'data' && state.toFamily === 'lang',
+  }),
+  toggle('detectDateTime', 'ui.opt.detectDates', {
+    when: (state) => state.fromFamily === 'data' && state.toFamily === 'lang',
+  }),
+  {
+    type: 'select',
+    key: 'rootType',
+    label: 'ui.opt.rootType',
+    dynamic: 'detectedTypes',
+    when: (state) => state.fromFamily === 'lang' && (state.detectedTypes || []).length > 1,
+  },
+];
 
 /**
  * @param {HTMLElement} container
  * @param {(key: string, value: any) => void} onChange
  */
-export function createOptionsBar(container, onChange) {
+export function createOptionsPanel(container, onChange) {
   let signature = '';
-  /** @type {Map<string, {sync: (state: any) => void}>} */
   let controls = new Map();
 
   function visibleSpecs(state) {
-    return SPECS[state.tool].filter((spec) => !spec.when || spec.when(state));
+    const target = TARGET_OPTIONS[state.to] || [];
+    return [...SHARED_OPTIONS, ...target].filter((spec) => !spec.when || spec.when(state));
   }
 
   function structureSignature(state, specs) {
-    return specs
-      .map((spec) => (spec.dynamic ? `${spec.key}:${(state[spec.dynamic] || []).join(',')}` : spec.key || 'sep'))
-      .join('|');
+    return [
+      getLanguage(),
+      state.to,
+      ...specs.map((spec) => (spec.dynamic ? `${spec.key}:${(state[spec.dynamic] || []).join(',')}` : spec.key)),
+    ].join('|');
   }
 
   function build(state, specs) {
     container.replaceChildren();
     controls = new Map();
 
-    for (const spec of specs) {
-      if (spec.type === 'separator') {
-        const separator = document.createElement('span');
+    specs.forEach((spec, index) => {
+      // Um filete separa as opções gerais das específicas do formato.
+      if (index > 0 && index === SHARED_OPTIONS.filter((s) => specs.includes(s)).length) {
+        const separator = document.createElement('div');
         separator.className = 'field__sep';
         container.append(separator);
-        continue;
       }
 
       const field = document.createElement('div');
       field.className = 'field';
 
-      if (spec.label && spec.type !== 'switch') {
-        const label = document.createElement('span');
-        label.className = 'field__label';
-        label.textContent = spec.label;
-        field.append(label);
-      }
+      const label = document.createElement('span');
+      label.className = 'field__label';
+      label.textContent = t(spec.label);
+      field.append(label);
 
-      const control = createControl(spec, state, onChange);
+      const control = createControl(spec, onChange);
       field.append(control.element);
       controls.set(spec.key, control);
       container.append(field);
-    }
+    });
   }
 
   return {
@@ -164,26 +181,25 @@ export function createOptionsBar(container, onChange) {
         build(state, specs);
       }
       for (const control of controls.values()) control.sync(state);
+      container.dataset.empty = t('ui.options.none');
+      return specs.length;
     },
-    /** Reposiciona os indicadores deslizantes (após mudanças de layout). */
     refresh() {
       for (const control of controls.values()) control.reposition?.();
+    },
+    count(state) {
+      return visibleSpecs(state).length;
     },
   };
 }
 
-function createControl(spec, state, onChange) {
+function createControl(spec, onChange) {
   switch (spec.type) {
-    case 'segmented':
-      return createSegmented(spec, onChange);
-    case 'switch':
-      return createSwitch(spec, onChange);
-    case 'text':
-      return createTextInput(spec, onChange);
-    case 'select':
-      return createSelect(spec, onChange);
-    default:
-      throw new Error(`Controle desconhecido: ${spec.type}`);
+    case 'segmented': return createSegmented(spec, onChange);
+    case 'switch': return createSwitch(spec, onChange);
+    case 'text': return createTextInput(spec, onChange);
+    case 'select': return createSelect(spec, onChange);
+    default: throw new Error(`Controle desconhecido: ${spec.type}`);
   }
 }
 
@@ -191,7 +207,7 @@ function createSegmented(spec, onChange) {
   const element = document.createElement('div');
   element.className = 'segmented';
   element.setAttribute('role', 'group');
-  if (spec.label) element.setAttribute('aria-label', spec.label);
+  element.setAttribute('aria-label', t(spec.label));
 
   const indicator = document.createElement('span');
   indicator.className = 'segmented__indicator';
@@ -202,7 +218,7 @@ function createSegmented(spec, onChange) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'segmented__option';
-    button.textContent = option.label;
+    button.textContent = t(option.label);
     button.dataset.value = option.id;
     button.setAttribute('aria-pressed', 'false');
     button.addEventListener('click', () => onChange(spec.key, option.id));
@@ -234,15 +250,13 @@ function createSwitch(spec, onChange) {
   element.type = 'button';
   element.className = 'switch';
   element.setAttribute('aria-pressed', 'false');
+  element.setAttribute('aria-label', t(spec.label));
 
   const track = document.createElement('span');
   track.className = 'switch__track';
   track.setAttribute('aria-hidden', 'true');
+  element.append(track);
 
-  const label = document.createElement('span');
-  label.textContent = spec.label;
-
-  element.append(track, label);
   element.addEventListener('click', () => {
     onChange(spec.key, element.getAttribute('aria-pressed') !== 'true');
   });
@@ -259,11 +273,10 @@ function createTextInput(spec, onChange) {
   const element = document.createElement('input');
   element.type = 'text';
   element.className = 'text-input';
-  element.placeholder = spec.placeholder || '';
+  element.placeholder = spec.placeholder ? t(spec.placeholder) : '';
   element.spellcheck = false;
   element.autocomplete = 'off';
-  element.setAttribute('aria-label', spec.label || spec.key);
-  if (spec.width) element.style.setProperty('--input-width', `${spec.width}px`);
+  element.setAttribute('aria-label', t(spec.label));
 
   element.addEventListener('input', () => onChange(spec.key, element.value));
 
@@ -279,7 +292,7 @@ function createTextInput(spec, onChange) {
 function createSelect(spec, onChange) {
   const element = document.createElement('select');
   element.className = 'select';
-  element.setAttribute('aria-label', spec.label || spec.key);
+  element.setAttribute('aria-label', t(spec.label));
   element.addEventListener('change', () => onChange(spec.key, element.value));
 
   return {

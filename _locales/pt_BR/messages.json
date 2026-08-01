@@ -1,0 +1,22 @@
+{
+  "extName": {
+    "message": "Codec Studio — JSON, YAML, Java, C#, TypeScript, Go",
+    "description": "Nome da extensão exibido no navegador e na Chrome Web Store."
+  },
+  "extShortName": {
+    "message": "Codec Studio",
+    "description": "Nome curto usado onde falta espaço."
+  },
+  "extDescription": {
+    "message": "Conversor offline de JSON, YAML, Java, C#, TypeScript, Dart, Swift, Go e Base64. Sem rede, sem permissões.",
+    "description": "Resumo da listagem. Precisa ficar abaixo de 132 caracteres."
+  },
+  "actionTitle": {
+    "message": "Codec Studio",
+    "description": "Dica exibida no botão da barra de ferramentas."
+  },
+  "commandOpen": {
+    "message": "Abrir o Codec Studio",
+    "description": "Descrição do atalho em chrome://extensions/shortcuts."
+  }
+}
