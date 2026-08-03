@@ -1,0 +1,14 @@
+services:
+  web:
+    image: ghcr.io/rafaelwms/codec-studio-extension-web:latest
+    container_name: codec-studio-web
+    restart: unless-stopped
+
+    ports:
+      - "8080:80"
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3

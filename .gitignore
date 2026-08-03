@@ -5,6 +5,7 @@
 # --- Artefatos de build ------------------------------------------------------
 # Gerados por `npm run build`; sempre reproduzíveis a partir do código-fonte.
 dist/
+dist-web/
 codec-studio-*.zip
 
 # Página de captura derivada do app.html por `npm run assets`.

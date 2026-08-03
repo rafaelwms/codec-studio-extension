@@ -1,0 +1,11 @@
+.git
+.gitignore
+.claude
+node_modules
+dist
+dist-web
+codec-studio-*.zip
+press
+artwork
+tests
+*.md
