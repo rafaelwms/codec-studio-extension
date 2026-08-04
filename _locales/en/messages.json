@@ -1,6 +1,6 @@
 {
   "extName": {
-    "message": "Codec Studio — JSON, YAML, Java, C#, TypeScript, Go",
+    "message": "Codec Studio — Safe Offline Converter",
     "description": "Extension name shown in the browser and on the Chrome Web Store."
   },
   "extShortName": {
@@ -8,8 +8,8 @@
     "description": "Short name used where space is tight."
   },
   "extDescription": {
-    "message": "Offline converter for JSON, YAML, Java, C#, TypeScript, Dart, Swift, Go and Base64. No network, no permissions.",
-    "description": "Store listing summary. Must stay under 132 characters."
+    "message": "Convert JSON, YAML and code between popular languages — 100% offline, with zero permissions and zero telemetry.",
+    "description": "Store listing summary. Must stay under 132 characters and avoid bare keyword lists (Chrome Web Store spam policy)."
   },
   "actionTitle": {
     "message": "Codec Studio",
