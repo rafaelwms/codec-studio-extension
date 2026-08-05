@@ -1,6 +1,6 @@
 {
   "name": "codec-studio",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "private": true,
   "type": "module",
   "description": "Extensão MV3 100% offline: converte entre JSON, YAML, Java, C#, TypeScript, Dart, Swift, Go e Base64. Sem dependências.",
