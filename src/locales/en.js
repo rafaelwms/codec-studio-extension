@@ -8,6 +8,15 @@
  */
 
 export default {
+  /* -------------------------------------------------------------- core/files */
+  'core.file.empty': 'The Base64 decodes to an empty file.',
+  'core.file.empty.hint': 'Check that the whole content was pasted.',
+  'core.file.dataUriNotBase64': 'This data URI is not Base64-encoded.',
+  'core.file.dataUriNotBase64.hint': 'Only URIs with ";base64," before the content can be decoded here.',
+  'core.file.unknownType': 'File type not recognized. Choose the extension before saving.',
+  'core.file.executable': 'This is executable content. Only open it if you trust where it came from.',
+  'core.file.mimeMismatch': 'The data URI declares {declared}, but the content looks like {detected}.',
+
   /* ------------------------------------------------------------- core/base64 */
   'core.base64.invalidChar': 'Invalid Base64 character: "{char}" at position {position}.',
   'core.base64.invalidChar.hint':
@@ -228,6 +237,30 @@ export default {
   'ui.opt.rootType': 'Root',
 
   /* ------------------------------------------------------- ui: formatos novos */
+  'ui.surface.file': 'File',
+  'ui.group.text': 'Text and files',
+  'ui.group.data': 'Data',
+  'ui.group.lang': 'Languages',
+  'ui.opt.dataUri': 'Data URI',
+  'ui.panel.open': 'Open file',
+  'ui.file.pick.title': 'Drop a file here',
+  'ui.file.pick.hint': 'Up to {size} MB of any type. It is read here, in your browser, and never sent anywhere.',
+  'ui.file.pick.button': 'Choose file',
+  'ui.file.change': 'Change file',
+  'ui.file.remove': 'Remove',
+  'ui.file.name': 'File name',
+  'ui.file.type': 'Save as',
+  'ui.file.save': 'Download file',
+  'ui.file.defaultName': 'file',
+  'ui.file.unknown': 'Unrecognized content',
+  'ui.file.typesLikely': 'Likely',
+  'ui.file.typesOther': 'Others',
+  'ui.file.held': 'Base64 too large to edit here. It is loaded and ready to convert.',
+  'ui.file.heldName': 'Loaded Base64',
+  'ui.file.actionSave': 'Save as file',
+  'ui.output.truncated': 'Showing the first {shown} of {total} characters. Copy and Download use the full result.',
+  'ui.toast.fileEmpty': 'This file is empty.',
+  'ui.toast.switchedToFile': '{name} loaded as a file.',
   'ui.surface.text': 'Plain text',
   'ui.surface.base64': 'Base64',
   'ui.format.from': 'Convert from',

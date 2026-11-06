@@ -8,6 +8,9 @@
  */
 
 import { CodecError } from '../core/base64.js';
+import {
+  detectFileType, FILE_TYPES, isTextBytes, replaceExtension, sanitizeFileName, toDataUri,
+} from '../core/files.js';
 import { highlight } from './highlight.js';
 import {
   applyTranslations, detectLanguage, formatMs, getLanguage,
@@ -15,14 +18,15 @@ import {
 } from './i18n.js';
 import { createOptionsPanel, TARGET_OPTIONS } from './options.js';
 import { loadPrefs, savePrefs } from './prefs.js';
-import { getSurface, isValidPair, runConversion, SURFACES, targetsFor } from './surfaces.js';
+import { getSurface, isValidPair, runConversion, SAMPLE_PDF_BASE64, SURFACES, targetsFor } from './surfaces.js';
 
 /* ------------------------------------------------------------------ estado */
 
 /** Padrões de cada formato de destino, espelhando os defaults do núcleo. */
 const OPTION_DEFAULTS = {
-  base64: { alphabet: 'standard', padding: true, wrap: false },
+  base64: { alphabet: 'standard', padding: true, wrap: false, dataUri: false },
   text: { strict: false },
+  file: { strict: false },
   json: { values: 'example' },
   yaml: { values: 'example' },
   java: { style: 'record', packageName: '', jackson: true, jacksonAll: false, primitives: true, separateFiles: false },
@@ -53,10 +57,24 @@ const runtime = {
   rootType: '',
   /** Rascunho por formato de origem: trocar de formato não faz perder o texto. */
   drafts: {},
+  /** Arquivo de entrada ({name, bytes, type, mime}): só em memória, nunca nas preferências. */
+  file: null,
+  /** Base64 grande demais para o editor; quando existe, substitui o conteúdo dele. */
+  heldText: null,
+  /** Resultado de Base64 → Arquivo. */
+  decoded: null,
+  /** O usuário editou o nome de saída, então ele não é mais gerado. */
+  nameTouched: false,
+  saveExt: '',
+  detectedExt: '',
 };
 
 const AUTO_CONVERT_LIMIT = 400_000;
-const MAX_FILE_BYTES = 5 * 1024 * 1024;
+const MAX_FILE_BYTES = 100 * 1024 * 1024;
+/** Acima disso o editor e o <pre> travam; o conteúdo segue inteiro na memória. */
+const EDITABLE_CHARS = 2_000_000;
+const OUTPUT_PREVIEW_CHARS = 200_000;
+const IMAGE_PREVIEW_BYTES = 10 * 1024 * 1024;
 
 /* -------------------------------------------------------------------- DOM */
 
@@ -87,6 +105,24 @@ const dom = {
   swapBtn: $('[data-action="swap"]'),
   copyBtn: $('[data-action="copy"]'),
   toast: $('#toast'),
+  sampleBtn: $('[data-action="sample"]'),
+  downloadBtn: $('.panel__tools [data-action="download"]'),
+  fileInput: $('#file-input'),
+  filePick: $('#file-pick'),
+  fileEmpty: $('#file-empty'),
+  filePickHint: $('#file-pick-hint'),
+  fileCard: $('#file-card'),
+  fileCardPreview: $('#file-card-preview'),
+  fileCardBadge: $('#file-card-badge'),
+  fileCardName: $('#file-card-name'),
+  fileCardMeta: $('#file-card-meta'),
+  fileResult: $('#file-result'),
+  savePreview: $('#save-preview'),
+  saveBadge: $('#save-badge'),
+  saveLabel: $('#save-label'),
+  saveMeta: $('#save-meta'),
+  saveName: $('#save-name'),
+  saveType: $('#save-type'),
 };
 
 const optionsPanel = createOptionsPanel(dom.options, handleOptionChange);
@@ -117,21 +153,36 @@ function conversionOptions() {
     ...prefs.shared,
     ...prefs.options[prefs.to],
     rootType: runtime.rootType || undefined,
+    mime: runtime.file?.mime,
   };
 }
 
+/** O que está sendo convertido: o editor, ou o Base64 grande demais para ele. */
+function currentText() {
+  return prefs.from === 'base64' && runtime.heldText !== null ? runtime.heldText : dom.input.value;
+}
+
+function setInputText(text, sourceId) {
+  const held = sourceId === 'base64' && text.length > EDITABLE_CHARS;
+  runtime.heldText = held ? text : null;
+  dom.input.value = held ? '' : text;
+}
+
 function convert({ animate = true } = {}) {
-  const text = dom.input.value;
+  const fromFile = prefs.from === 'file';
+  const text = fromFile ? '' : currentText();
+  renderSourceMode();
   updateInputMetrics(text);
 
-  if (!text.trim()) {
+  if (fromFile ? !runtime.file : !text.trim()) {
     clearOutput();
     return;
   }
 
   const started = performance.now();
   try {
-    const result = runConversion(text, prefs.from, prefs.to, conversionOptions());
+    const source = fromFile ? runtime.file.bytes : text;
+    const result = runConversion(source, prefs.from, prefs.to, conversionOptions());
     const elapsed = performance.now() - started;
 
     // A lista de tipos vem do documento: alimenta o seletor de raiz.
@@ -147,9 +198,18 @@ function convert({ animate = true } = {}) {
     runtime.highlight = result.highlight;
 
     dom.errorCard.hidden = true;
-    renderOutput(result.output, result.highlight, animate);
-    renderWarnings(result.warnings);
-    updateOutputMetrics(result.output, elapsed);
+    runtime.decoded = result.file || null;
+    dom.fileResult.hidden = !result.file;
+    if (result.file) {
+      dom.output.replaceChildren();
+      renderFileResult(result.file);
+      dom.outputMetrics.textContent = formatBytes(result.file.bytes.length);
+      dom.timing.textContent = formatMs(elapsed);
+    } else {
+      renderOutput(result.output, result.highlight, animate);
+      updateOutputMetrics(result.output, elapsed);
+    }
+    renderWarnings(outputWarnings(result), result.binary);
   } catch (error) {
     renderError(error);
   }
@@ -179,14 +239,114 @@ function renderFormatSelects() {
 }
 
 function fillSelect(select, surfaces, selected) {
+  const option = (surface) => {
+    const element = document.createElement('option');
+    element.value = surface.id;
+    element.textContent = surfaceLabel(surface);
+    return element;
+  };
+  const groupOf = (surface) => (surface.family === 'text' ? 'text' : surface.kind);
+  const groups = [...new Set(surfaces.map(groupOf))];
+
   select.replaceChildren();
-  for (const surface of surfaces) {
-    const option = document.createElement('option');
-    option.value = surface.id;
-    option.textContent = surfaceLabel(surface);
-    select.append(option);
+  if (groups.length < 2) {
+    select.append(...surfaces.map(option));
+  } else {
+    for (const group of groups) {
+      const element = document.createElement('optgroup');
+      element.label = t(`ui.group.${group}`);
+      element.append(...surfaces.filter((surface) => groupOf(surface) === group).map(option));
+      select.append(element);
+    }
   }
   select.value = selected;
+}
+
+/** A entrada é o editor ou um cartão de arquivo; a saída decide quais botões fazem sentido. */
+function renderSourceMode() {
+  const isFile = prefs.from === 'file';
+  const held = prefs.from === 'base64' && runtime.heldText !== null;
+  const file = isFile ? runtime.file : null;
+
+  dom.input.hidden = isFile || held;
+  dom.filePick.hidden = !isFile && !held;
+  dom.fileEmpty.hidden = Boolean(file) || held;
+  dom.fileCard.hidden = !file && !held;
+  dom.sampleBtn.hidden = isFile;
+  dom.copyBtn.hidden = prefs.to === 'file';
+  dom.downloadBtn.hidden = prefs.to === 'file';
+  dom.filePickHint.textContent = t('ui.file.pick.hint', { size: MAX_FILE_BYTES / 1024 / 1024 });
+
+  if (file) {
+    setPreview(dom.fileCardPreview, file.bytes, file.type);
+    dom.fileCardBadge.textContent = file.type.ext;
+    dom.fileCardName.textContent = file.name;
+    dom.fileCardMeta.textContent = `${fileTypeLabel(file)} · ${formatBytes(file.bytes.length)}`;
+  } else if (held) {
+    setPreview(dom.fileCardPreview, null);
+    dom.fileCardBadge.textContent = 'b64';
+    dom.fileCardName.textContent = t('ui.file.heldName');
+    dom.fileCardMeta.textContent = `${formatBytes(runtime.heldText.length)} · ${t('ui.file.held')}`;
+  }
+}
+
+const fileTypeLabel = (file) => (file.known ? file.type.label : t('ui.file.unknown'));
+
+const previews = new WeakMap();
+
+/** Imagens passam por data: porque a CSP não libera blob:. SVG em <img> não executa script. */
+function setPreview(image, bytes, type) {
+  if (bytes && previews.get(image) === bytes) return;
+  const show = Boolean(bytes && type?.image && bytes.length <= IMAGE_PREVIEW_BYTES);
+  if (bytes) previews.set(image, bytes);
+  else previews.delete(image);
+  image.hidden = !show;
+  if (show) image.src = toDataUri(bytes, type.mime);
+  else image.removeAttribute('src');
+}
+
+function renderFileResult(file) {
+  if (runtime.detectedExt !== file.type.ext) {
+    runtime.detectedExt = file.type.ext;
+    runtime.saveExt = '';
+  }
+  const ext = runtime.saveExt || file.type.ext;
+
+  setPreview(dom.savePreview, file.bytes, file.type);
+  dom.saveBadge.textContent = file.type.ext;
+  dom.saveLabel.textContent = fileTypeLabel(file);
+  dom.saveLabel.hidden = dom.saveLabel.textContent.toLowerCase() === file.type.ext;
+  dom.saveMeta.textContent = formatBytes(file.bytes.length);
+  fillSaveTypes(file, ext);
+  if (!runtime.nameTouched) dom.saveName.value = `${t('ui.file.defaultName')}.${ext}`;
+}
+
+/** Os tipos prováveis para este conteúdo primeiro; o resto continua à mão. */
+function fillSaveTypes(file, selected) {
+  const likely = [file.type, ...file.alternatives];
+  const group = (label, types) => {
+    const element = document.createElement('optgroup');
+    element.label = label;
+    for (const type of types) {
+      const option = document.createElement('option');
+      option.value = type.ext;
+      option.textContent = `${type.label} (.${type.ext})`;
+      element.append(option);
+    }
+    return element;
+  };
+  dom.saveType.replaceChildren(
+    group(t('ui.file.typesLikely'), likely),
+    group(t('ui.file.typesOther'), FILE_TYPES.filter((type) => !likely.includes(type))),
+  );
+  dom.saveType.value = selected;
+}
+
+function outputWarnings(result) {
+  if (result.output.length <= OUTPUT_PREVIEW_CHARS) return result.warnings;
+  const shown = OUTPUT_PREVIEW_CHARS.toLocaleString(getLanguage());
+  const total = result.output.length.toLocaleString(getLanguage());
+  return [...result.warnings, t('ui.output.truncated', { shown, total })];
 }
 
 function renderOptions() {
@@ -197,7 +357,9 @@ function renderOptions() {
 
 function renderOutput(text, language, animate) {
   dom.output.classList.toggle('is-plain', language === 'plain');
-  dom.output.replaceChildren(highlight(text, language));
+  // O resultado inteiro fica em runtime.output; o <pre> só mostra o que consegue renderizar.
+  const visible = text.length > OUTPUT_PREVIEW_CHARS ? `${text.slice(0, OUTPUT_PREVIEW_CHARS)}…` : text;
+  dom.output.replaceChildren(highlight(visible, language));
 
   if (!animate || prefersReducedMotion()) return;
 
@@ -214,7 +376,7 @@ function renderOutput(text, language, animate) {
   }, 660);
 }
 
-function renderWarnings(warnings) {
+function renderWarnings(warnings, offerFile = false) {
   dom.warnings.replaceChildren();
   for (const warning of warnings || []) {
     const chip = document.createElement('span');
@@ -222,11 +384,21 @@ function renderWarnings(warnings) {
     chip.textContent = warning;
     dom.warnings.append(chip);
   }
+  if (offerFile) {
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.className = 'warning warning--action';
+    action.dataset.action = 'to-file';
+    action.textContent = t('ui.file.actionSave');
+    dom.warnings.append(action);
+  }
 }
 
 function renderError(error) {
   runtime.hasError = true;
   runtime.output = '';
+  runtime.decoded = null;
+  dom.fileResult.hidden = true;
 
   dom.output.replaceChildren();
   dom.warnings.replaceChildren();
@@ -252,6 +424,8 @@ function highlightInputPosition(position) {
 function clearOutput() {
   runtime.output = '';
   runtime.hasError = false;
+  runtime.decoded = null;
+  dom.fileResult.hidden = true;
   dom.output.replaceChildren();
   dom.warnings.replaceChildren();
   dom.errorCard.hidden = true;
@@ -261,7 +435,18 @@ function clearOutput() {
 
 const byteLength = (text) => new TextEncoder().encode(text).length;
 
+function formatBytes(bytes) {
+  if (bytes < 1024) return plural(bytes, 'byte');
+  const megabytes = bytes >= 1024 * 1024;
+  const value = bytes / (megabytes ? 1024 * 1024 : 1024);
+  return `${value.toLocaleString(getLanguage(), { maximumFractionDigits: 1 })} ${megabytes ? 'MB' : 'KB'}`;
+}
+
 function updateInputMetrics(text) {
+  if (prefs.from === 'file') {
+    dom.inputMetrics.textContent = runtime.file ? formatBytes(runtime.file.bytes.length) : t('ui.metrics.none');
+    return;
+  }
   const chars = text.length;
   const label = plural(chars, 'char');
   // Recontar bytes a cada tecla fica caro em textos enormes.
@@ -270,8 +455,9 @@ function updateInputMetrics(text) {
 }
 
 function updateOutputMetrics(text, elapsed) {
-  const lines = text ? text.split('\n').length : 0;
-  dom.outputMetrics.textContent = `${plural(text.length, 'char')} · ${plural(lines, 'line')}`;
+  // Contar linhas de um resultado enorme custa mais do que a informação vale.
+  const lines = text.length > OUTPUT_PREVIEW_CHARS ? '' : ` · ${plural(text ? text.split('\n').length : 0, 'line')}`;
+  dom.outputMetrics.textContent = `${plural(text.length, 'char')}${lines}`;
   dom.timing.textContent = formatMs(elapsed);
 }
 
@@ -390,13 +576,25 @@ function swapFormats() {
   }
 
   const carry = !runtime.hasError && runtime.output ? runtime.output : null;
+  const decoded = runtime.decoded;
+  const outputName = sanitizeFileName(dom.saveName.value, t('ui.file.defaultName'));
+  const inputName = prefs.from === 'file' ? runtime.file?.name : '';
   dom.swapBtn.classList.toggle('is-flipped');
 
   withTransition(() => {
     const { from, to } = prefs;
     prefs.from = to;
     prefs.to = from;
-    if (carry) dom.input.value = carry;
+    if (decoded) {
+      runtime.file = { name: outputName, bytes: decoded.bytes, type: decoded.type, known: decoded.known, mime: decoded.type.mime };
+    } else if (carry) {
+      setInputText(carry, to);
+    }
+    // Ida e volta preservam o nome do arquivo.
+    if (inputName) {
+      dom.saveName.value = inputName;
+      runtime.nameTouched = true;
+    }
     runtime.detectedTypes = [];
     runtime.rootType = '';
 
@@ -447,7 +645,23 @@ function legacyCopy(text) {
   return ok;
 }
 
+function saveBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast(t('ui.toast.downloaded', { name }));
+}
+
 function downloadOutput() {
+  if (runtime.decoded) {
+    // octet-stream: o navegador só salva, sem tentar interpretar o conteúdo.
+    const blob = new Blob([runtime.decoded.bytes], { type: 'application/octet-stream' });
+    saveBlob(blob, sanitizeFileName(dom.saveName.value, t('ui.file.defaultName')));
+    return;
+  }
   if (!runtime.output) {
     showToast(t('ui.toast.nothingToDownload'), 'error');
     return;
@@ -458,24 +672,24 @@ function downloadOutput() {
     ? (runtime.rootType || prefs.shared.rootName || 'Model').replace(/[^\w$]/g, '') || 'Model'
     : 'payload';
 
-  const blob = new Blob([runtime.output], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `${base}.${surface.extension}`;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  showToast(t('ui.toast.downloaded', { name: link.download }));
+  const name = prefs.from === 'file' && runtime.file
+    ? `${runtime.file.name}.b64.txt`
+    : `${base}.${surface.extension}`;
+  saveBlob(new Blob([runtime.output], { type: 'text/plain;charset=utf-8' }), name);
 }
 
 function loadSample() {
-  dom.input.value = t(`ui.sample.${prefs.from}`);
+  setInputText(prefs.to === 'file' ? SAMPLE_PDF_BASE64 : t(`ui.sample.${prefs.from}`), prefs.from);
   convert({ animate: true });
   dom.input.focus();
 }
 
 function clearAll() {
   dom.input.value = '';
+  runtime.heldText = null;
+  if (prefs.from === 'file') runtime.file = null;
+  runtime.nameTouched = false;
+  renderSourceMode();
   clearOutput();
   updateInputMetrics('');
   dom.input.focus();
@@ -504,10 +718,39 @@ async function loadFile(file) {
     showToast(t('ui.toast.fileTooLarge', { size: MAX_FILE_BYTES / 1024 / 1024 }), 'error');
     return;
   }
+  if (file.size === 0) {
+    showToast(t('ui.toast.fileEmpty'), 'error');
+    return;
+  }
   try {
-    dom.input.value = await file.text();
-    convert({ animate: true });
-    showToast(t('ui.toast.fileLoaded', { name: file.name }));
+    const bytes = new Uint8Array(await file.arrayBuffer());
+
+    // Texto vai para o editor do formato atual; o resto só faz sentido como arquivo.
+    if (prefs.from !== 'file' && isTextBytes(bytes)) {
+      const text = new TextDecoder().decode(bytes);
+      if (prefs.from === 'base64' || text.length <= EDITABLE_CHARS) {
+        setInputText(text, prefs.from);
+        convert({ animate: true });
+        showToast(t('ui.toast.fileLoaded', { name: file.name }));
+        return;
+      }
+    }
+
+    const detected = detectFileType(bytes);
+    runtime.file = {
+      name: file.name,
+      bytes,
+      type: detected.type,
+      known: detected.known,
+      mime: detected.known ? detected.type.mime : file.type || detected.type.mime,
+    };
+    if (prefs.from === 'file') {
+      convert({ animate: true });
+      showToast(t('ui.toast.fileLoaded', { name: file.name }));
+    } else {
+      setFormat('from', 'file');
+      showToast(t('ui.toast.switchedToFile', { name: file.name }));
+    }
   } catch {
     showToast(t('ui.toast.fileError'), 'error');
   }
@@ -535,6 +778,8 @@ function bindEvents() {
       download: downloadOutput,
       clear: clearAll,
       sample: loadSample,
+      'open-file': () => dom.fileInput.click(),
+      'to-file': () => setFormat('to', 'file'),
       theme: () => setTheme(prefs.theme === 'dark' ? 'light' : 'dark'),
       language: cycleLanguage,
       expand: openInTab,
@@ -546,6 +791,29 @@ function bindEvents() {
   });
 
   dom.backdrop.addEventListener('click', () => toggleOptions(false));
+
+  dom.fileInput.addEventListener('change', () => {
+    loadFile(dom.fileInput.files?.[0]);
+    dom.fileInput.value = ''; // permite escolher o mesmo arquivo de novo
+  });
+  dom.saveName.addEventListener('input', () => {
+    runtime.nameTouched = true;
+  });
+  dom.saveType.addEventListener('change', () => {
+    runtime.saveExt = dom.saveType.value;
+    dom.saveName.value = replaceExtension(dom.saveName.value, runtime.saveExt);
+  });
+  for (const image of [dom.fileCardPreview, dom.savePreview]) {
+    image.addEventListener('error', () => {
+      image.hidden = true;
+    });
+  }
+  document.addEventListener('paste', (event) => {
+    const file = event.clipboardData?.files?.[0];
+    if (!file) return;
+    event.preventDefault();
+    loadFile(file);
+  });
 
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !dom.popover.hidden) {
@@ -566,22 +834,20 @@ function bindEvents() {
     }
   });
 
+  // Soltar em qualquer ponto da janela carrega o arquivo: errar o alvo não deve abri-lo no lugar do app.
   const panel = dom.inputPanel;
-  panel.addEventListener('dragover', (event) => {
+  document.addEventListener('dragover', (event) => {
     event.preventDefault();
-    panel.classList.add('is-dragging');
+    if (event.dataTransfer?.types?.includes('Files')) panel.classList.add('is-dragging');
   });
-  panel.addEventListener('dragleave', (event) => {
-    if (event.relatedTarget && panel.contains(event.relatedTarget)) return;
-    panel.classList.remove('is-dragging');
+  document.addEventListener('dragleave', (event) => {
+    if (!event.relatedTarget) panel.classList.remove('is-dragging');
   });
-  panel.addEventListener('drop', (event) => {
+  document.addEventListener('drop', (event) => {
     event.preventDefault();
     panel.classList.remove('is-dragging');
     loadFile(event.dataTransfer?.files?.[0]);
   });
-  document.addEventListener('dragover', (event) => event.preventDefault());
-  document.addEventListener('drop', (event) => event.preventDefault());
 
   window.addEventListener('resize', () => optionsPanel.refresh());
 }
@@ -604,9 +870,15 @@ function init() {
 
   renderFormatSelects();
   renderOptions();
+  renderSourceMode();
   updateInputMetrics('');
   clearOutput();
   bindEvents();
+  if (/Mac/.test(navigator.platform)) {
+    for (const key of document.querySelectorAll('.statusbar kbd')) {
+      if (key.textContent === 'Ctrl') key.textContent = '⌘';
+    }
+  }
   dom.input.focus();
 }
 

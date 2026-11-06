@@ -6,6 +6,15 @@
  */
 
 export default {
+  /* -------------------------------------------------------------- core/files */
+  'core.file.empty': 'O Base64 decodifica para um arquivo vazio.',
+  'core.file.empty.hint': 'Confira se o conteúdo foi colado por inteiro.',
+  'core.file.dataUriNotBase64': 'Este Data URI não está codificado em Base64.',
+  'core.file.dataUriNotBase64.hint': 'Só dá para decodificar aqui URIs com ";base64," antes do conteúdo.',
+  'core.file.unknownType': 'Tipo de arquivo não reconhecido. Escolha a extensão antes de salvar.',
+  'core.file.executable': 'Este conteúdo é executável. Só abra se confiar na origem.',
+  'core.file.mimeMismatch': 'O Data URI declara {declared}, mas o conteúdo parece ser {detected}.',
+
   /* ------------------------------------------------------------- core/base64 */
   'core.base64.invalidChar': 'Caractere inválido para Base64: "{char}" na posição {position}.',
   'core.base64.invalidChar.hint':
@@ -230,6 +239,30 @@ export default {
   'ui.opt.rootType': 'Raiz',
 
   /* ------------------------------------------------------- ui: formatos novos */
+  'ui.surface.file': 'Arquivo',
+  'ui.group.text': 'Texto e arquivos',
+  'ui.group.data': 'Dados',
+  'ui.group.lang': 'Linguagens',
+  'ui.opt.dataUri': 'Data URI',
+  'ui.panel.open': 'Abrir arquivo',
+  'ui.file.pick.title': 'Solte um arquivo aqui',
+  'ui.file.pick.hint': 'Até {size} MB, de qualquer tipo. Ele é lido aqui, no seu navegador, e não é enviado a lugar nenhum.',
+  'ui.file.pick.button': 'Escolher arquivo',
+  'ui.file.change': 'Trocar arquivo',
+  'ui.file.remove': 'Remover',
+  'ui.file.name': 'Nome do arquivo',
+  'ui.file.type': 'Salvar como',
+  'ui.file.save': 'Baixar arquivo',
+  'ui.file.defaultName': 'arquivo',
+  'ui.file.unknown': 'Conteúdo não reconhecido',
+  'ui.file.typesLikely': 'Prováveis',
+  'ui.file.typesOther': 'Outros',
+  'ui.file.held': 'Base64 grande demais para editar aqui. Ele está carregado e pronto para converter.',
+  'ui.file.heldName': 'Base64 carregado',
+  'ui.file.actionSave': 'Salvar como arquivo',
+  'ui.output.truncated': 'Mostrando os primeiros {shown} de {total} caracteres. Copiar e Baixar usam o resultado completo.',
+  'ui.toast.fileEmpty': 'Este arquivo está vazio.',
+  'ui.toast.switchedToFile': '{name} carregado como arquivo.',
   'ui.surface.text': 'Texto simples',
   'ui.surface.base64': 'Base64',
   'ui.format.from': 'Converter de',

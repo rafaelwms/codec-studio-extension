@@ -16,18 +16,24 @@ const toggle = (key, label, extra = {}) => ({ type: 'switch', key, label, ...ext
 const text = (key, label, placeholder, extra = {}) =>
   ({ type: 'text', key, label, placeholder, ...extra });
 
+/** Data URI só existe para arquivos, e fixa alfabeto, padding e quebra de linha. */
+const isDataUri = (state) => state.from === 'file' && state.dataUri;
+
 /** Opções específicas de cada formato de destino. */
 export const TARGET_OPTIONS = {
   base64: [
     segmented('alphabet', 'ui.opt.alphabet', [
       { id: 'standard', label: 'ui.opt.standard' },
       { id: 'url', label: 'ui.opt.urlSafe' },
-    ]),
-    toggle('padding', 'ui.opt.padding'),
-    toggle('wrap', 'ui.opt.wrap'),
+    ], { when: (state) => !isDataUri(state) }),
+    toggle('padding', 'ui.opt.padding', { when: (state) => !isDataUri(state) }),
+    toggle('wrap', 'ui.opt.wrap', { when: (state) => !isDataUri(state) }),
+    toggle('dataUri', 'ui.opt.dataUri', { when: (state) => state.from === 'file' }),
   ],
 
   text: [toggle('strict', 'ui.opt.strict')],
+
+  file: [toggle('strict', 'ui.opt.strict')],
 
   json: [
     segmented('values', 'ui.opt.values', [

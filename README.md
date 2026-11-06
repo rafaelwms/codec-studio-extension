@@ -12,6 +12,7 @@ Interface em **inglês e português**, seguindo o idioma do navegador.
 **Dados:** JSON · YAML
 **Linguagens:** Java · C# · TypeScript · Dart · Swift · Go
 **Texto:** Texto simples ⇄ Base64
+**Arquivos:** qualquer arquivo ⇄ Base64 (PDF, imagens, Office, ZIP, áudio, vídeo…)
 
 Qualquer formato de dados ou linguagem converte para qualquer outro — **56 combinações**.
 Isso não vem de 56 conversores: cada formato tem um *leitor* (formato → modelo) e um
@@ -25,6 +26,7 @@ linguagem nova é acrescentar um arquivo em [src/core/formats/](src/core/formats
 | **Linguagem → Linguagem** | Traduz o modelo de uma para a outra, com as convenções de cada uma |
 | **Dados → Dados** | Converte o seu documento preservando os valores reais (JSON ⇄ YAML) |
 | **Texto ⇄ Base64** | Codifica e decodifica com UTF-8 correto, alfabeto URL-safe e dump hexadecimal para binário |
+| **Arquivo ⇄ Base64** | Lê o arquivo na memória do navegador e gera Base64 ou Data URI; na volta, detecta o tipo pelo conteúdo e salva |
 
 ---
 
@@ -61,7 +63,7 @@ Não é uma promessa de marketing; é o que o código permite:
   abas, histórico, cookies, downloads ou sites. Chrome mostra "sem permissões" na instalação.
 - **Sem `content_scripts`** — nada é injetado nas páginas que você visita. A extensão não
   consegue ler nenhuma página, nem a que está aberta agora.
-- **Sem service worker / background** — nada roda quando o popup está fechado.
+- **Service worker mínimo** — o único existente ([src/background.js](src/background.js), 3 linhas) só abre o app em uma nova aba ao clicar no ícone. Nada mais roda em segundo plano; confira no código-fonte.
 - **CSP restritiva** (`default-src 'none'; connect-src 'none'`) — o próprio navegador impede
   qualquer requisição de rede a partir da extensão, mesmo que um bug tentasse fazê-la.
 - **Zero dependências** — nenhum `node_modules`, nenhuma CDN, nenhuma fonte remota, nenhum
@@ -87,10 +89,21 @@ grep -rE "fetch|XMLHttpRequest|https?://|innerHTML|eval\(" src/ styles/ app.html
 | Converter | `Ctrl/⌘ + Enter` (a conversão também é automática ao digitar) |
 | Inverter direção | `Ctrl/⌘ + I` — o resultado atual vira a nova entrada |
 | Copiar resultado | `Ctrl/⌘ + Shift + C` |
-| Abrir o popup | `Alt + Shift + C` |
+| Abrir o app (nova aba) | `Alt + Shift + C` |
 
-Também dá para **arrastar um arquivo de texto** (até 5 MB) para o painel de entrada e
-**abrir em uma aba** (ícone ↗) quando o popup ficar apertado — a mesma página se adapta.
+Também dá para **arrastar, colar ou abrir um arquivo** (até 100 MB) em qualquer ponto da
+janela: texto vai para o editor, o resto entra como arquivo. A página se adapta a janelas
+estreitas ou largas.
+
+### Arquivos
+
+- **Arquivo → Base64** gera Base64 puro ou, com a opção *Data URI*, `data:application/pdf;base64,…`.
+- **Base64 → Arquivo** aceita Base64 puro, entre aspas ou Data URI. O tipo vem da assinatura
+  do conteúdo, e a lista *Salvar como* traz primeiro os tipos prováveis (um ZIP pode ser
+  `.docx`, `.jar`…). Imagens têm prévia; o nome do arquivo é livre.
+- Resultados grandes aparecem resumidos na tela; Copiar e Baixar usam o conteúdo completo.
+- Nada disso exige permissão ou rede: o arquivo fica só na memória da aba e o download é um
+  `blob:` local.
 
 ### Base64
 
@@ -136,7 +149,7 @@ npm run assets     # capturas 1280×800 e tiles da loja (precisa do serve rodand
 ```
 
 A lógica de conversão (`src/core/`) não toca no DOM e é testada diretamente pelo Node; a
-interface (`src/ui/`) só orquestra. Por isso a mesma página abre como popup e como aba, e
+interface (`src/ui/`) só orquestra. Por isso a mesma página se adapta a qualquer tamanho de janela, e
 os mesmos módulos rodam nos testes.
 
 **Idiomas.** Os catálogos são módulos ES importados estaticamente — não há `fetch`, o que
@@ -147,7 +160,7 @@ suíte dedicada garante que `en` e `pt-BR` tenham as mesmas chaves e os mesmos p
 
 ```
 manifest.json            MV3, zero permissões, CSP restritiva
-app.html                 popup e aba (o layout se adapta por media query)
+app.html                 página do app, aberta em aba (o layout se adapta por media query)
 styles/app.css           @layer, color-mix(), @property, temas claro/escuro
 src/core/ir.js           modelo intermediário — o centro de tudo
 src/core/convert.js      orquestrador: ler de um formato, escrever no outro

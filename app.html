@@ -60,6 +60,7 @@
             <svg class="format-select__chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
           </label>
           <div class="panel__tools">
+            <button class="ghost-btn" type="button" data-action="open-file" data-i18n="ui.panel.open">Open file</button>
             <button class="ghost-btn" type="button" data-action="sample" data-i18n="ui.panel.sample">Example</button>
             <button class="ghost-btn" type="button" data-action="clear" data-i18n="ui.panel.clear">Clear</button>
           </div>
@@ -67,6 +68,24 @@
         <div class="panel__body">
           <textarea id="input" class="editor" spellcheck="false" autocomplete="off" autocapitalize="off"
                     data-i18n-aria-label="ui.format.from" data-i18n-placeholder="ui.input.placeholder"></textarea>
+          <div class="file-pane" id="file-pick" hidden>
+            <div class="file-empty" id="file-empty">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M14 3v5h5M12 18v-6M9.5 14.5 12 12l2.5 2.5"/></svg>
+              <p class="file-empty__title" data-i18n="ui.file.pick.title">Drop a file here</p>
+              <p class="file-empty__hint" id="file-pick-hint"></p>
+              <button class="save-btn" type="button" data-action="open-file" data-i18n="ui.file.pick.button">Choose file</button>
+            </div>
+            <div class="file-card" id="file-card" hidden>
+              <img class="file-card__preview" id="file-card-preview" alt="" hidden>
+              <span class="file-card__badge" id="file-card-badge" aria-hidden="true"></span>
+              <p class="file-card__name" id="file-card-name"></p>
+              <p class="file-card__meta" id="file-card-meta"></p>
+              <div class="file-card__actions">
+                <button class="ghost-btn" type="button" data-action="open-file" data-i18n="ui.file.change">Change file</button>
+                <button class="ghost-btn" type="button" data-action="clear" data-i18n="ui.file.remove">Remove</button>
+              </div>
+            </div>
+          </div>
           <div class="dropzone" aria-hidden="true"><span data-i18n="ui.dropzone">Drop the file to load it</span></div>
         </div>
         <footer class="panel__foot">
@@ -117,6 +136,25 @@
           <pre class="editor editor--output" id="output" tabindex="0" data-i18n-aria-label="ui.format.to" aria-live="polite"></pre>
           <div class="scanline" aria-hidden="true"></div>
           <div class="placeholder" id="placeholder" data-i18n="ui.placeholder.output">The result shows up here.</div>
+          <div class="file-pane" id="file-result" hidden>
+            <div class="file-card">
+              <img class="file-card__preview" id="save-preview" alt="" hidden>
+              <span class="file-card__badge" id="save-badge" aria-hidden="true"></span>
+              <p class="file-card__name" id="save-label"></p>
+              <p class="file-card__meta" id="save-meta"></p>
+              <div class="file-form">
+                <label class="file-form__field">
+                  <span class="field__label" data-i18n="ui.file.name">File name</span>
+                  <input class="text-input" id="save-name" type="text" spellcheck="false" autocomplete="off">
+                </label>
+                <label class="file-form__field">
+                  <span class="field__label" data-i18n="ui.file.type">Save as</span>
+                  <select class="select" id="save-type"></select>
+                </label>
+              </div>
+              <button class="save-btn" type="button" data-action="download" data-i18n="ui.file.save">Download file</button>
+            </div>
+          </div>
           <div class="error-card" id="error-card" hidden>
             <svg viewBox="0 0 24 24" aria-hidden="true" class="error-card__icon">
               <circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.4v.1"/>
@@ -169,6 +207,7 @@
   <div class="popover-backdrop" id="popover-backdrop" hidden></div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <input id="file-input" type="file" hidden>
 
   <script type="module" src="src/ui/main.js"></script>
 </body>

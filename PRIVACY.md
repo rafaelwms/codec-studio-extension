@@ -11,12 +11,12 @@ nenhuma requisição de rede — nem para servidores nossos, nem para terceiros.
 
 ## Que dados a extensão trata
 
-O único dado que a extensão processa é o **texto que você digita, cola ou solta** na
-janela de conversão. Esse texto:
+O único dado que a extensão processa é o **texto ou arquivo que você digita, cola, abre ou
+solta** na janela de conversão. Esse conteúdo:
 
 - é processado inteiramente na memória do seu navegador, pelo código da própria extensão;
 - **nunca** é enviado para nenhum servidor;
-- **nunca** é gravado em disco;
+- **nunca** é gravado em disco, a não ser quando você mesmo clica em Baixar;
 - desaparece quando você fecha a janela da extensão.
 
 ## O que é salvo no seu navegador

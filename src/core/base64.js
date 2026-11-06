@@ -58,35 +58,35 @@ const LOOKUP = buildLookup();
 export function bytesToBase64(bytes, options = {}) {
   const { urlSafe = false, padding = true, lineLength = 0 } = options;
   const alphabet = urlSafe ? ALPHABET_URL : ALPHABET_STD;
+  const codes = new Uint8Array(64);
+  for (let i = 0; i < 64; i += 1) codes[i] = alphabet.charCodeAt(i);
+
+  // Escreve em bytes e decodifica de uma vez: uma string por bloco não aguenta arquivos grandes.
   const length = bytes.length;
-  const parts = [];
+  const out = new Uint8Array(Math.ceil(length / 3) * 4);
   let index = 0;
+  let cursor = 0;
 
   for (; index + 2 < length; index += 3) {
     const chunk = (bytes[index] << 16) | (bytes[index + 1] << 8) | bytes[index + 2];
-    parts.push(
-      alphabet[(chunk >>> 18) & 63] +
-        alphabet[(chunk >>> 12) & 63] +
-        alphabet[(chunk >>> 6) & 63] +
-        alphabet[chunk & 63],
-    );
+    out[cursor] = codes[(chunk >>> 18) & 63];
+    out[cursor + 1] = codes[(chunk >>> 12) & 63];
+    out[cursor + 2] = codes[(chunk >>> 6) & 63];
+    out[cursor + 3] = codes[chunk & 63];
+    cursor += 4;
   }
 
   const remaining = length - index;
-  if (remaining === 1) {
-    const chunk = bytes[index] << 16;
-    parts.push(alphabet[(chunk >>> 18) & 63] + alphabet[(chunk >>> 12) & 63] + (padding ? '==' : ''));
-  } else if (remaining === 2) {
-    const chunk = (bytes[index] << 16) | (bytes[index + 1] << 8);
-    parts.push(
-      alphabet[(chunk >>> 18) & 63] +
-        alphabet[(chunk >>> 12) & 63] +
-        alphabet[(chunk >>> 6) & 63] +
-        (padding ? '=' : ''),
-    );
+  if (remaining > 0) {
+    const chunk = (bytes[index] << 16) | (remaining === 2 ? bytes[index + 1] << 8 : 0);
+    out[cursor++] = codes[(chunk >>> 18) & 63];
+    out[cursor++] = codes[(chunk >>> 12) & 63];
+    if (remaining === 2) out[cursor++] = codes[(chunk >>> 6) & 63];
+    else if (padding) out[cursor++] = 61;
+    if (padding) out[cursor++] = 61;
   }
 
-  const encoded = parts.join('');
+  const encoded = new TextDecoder('ascii').decode(out.subarray(0, cursor));
   if (lineLength > 0) return wrapLines(encoded, lineLength);
   return encoded;
 }
@@ -107,33 +107,37 @@ export function base64ToBytes(input, options = {}) {
   const { strict = false } = options;
   const warnings = [];
 
-  let sanitized = '';
+  // Decodifica durante a validação: acumular uma string limpa antes não aguenta arquivos grandes.
+  const bytes = new Uint8Array(Math.ceil((input.length * 3) / 4));
+  let byteIndex = 0;
+  let buffer = 0;
+  let bits = 0;
+  let digits = 0;
   let sawWhitespace = false;
   let sawUrlSafe = false;
   let sawStandard = false;
   let padCount = 0;
 
   for (let i = 0; i < input.length; i += 1) {
-    const char = input[i];
     const code = input.charCodeAt(i);
 
-    if (char === ' ' || char === '\n' || char === '\r' || char === '\t' || char === '\f' || char === '\v') {
+    if (code === 32 || (code >= 9 && code <= 13)) {
       sawWhitespace = true;
       continue;
     }
-    if (char === '=') {
+    if (code === 61) {
       padCount += 1;
       continue;
     }
     if (code > 127 || LOOKUP[code] === -1) {
       throw new CodecError('core.base64.invalidChar', {
-        params: { char, position: i + 1 },
+        params: { char: input[i], position: i + 1 },
         hintCode: 'core.base64.invalidChar.hint',
         position: i,
       });
     }
-    if (char === '-' || char === '_') sawUrlSafe = true;
-    if (char === '+' || char === '/') sawStandard = true;
+    if (code === 45 || code === 95) sawUrlSafe = true;
+    if (code === 43 || code === 47) sawStandard = true;
     if (padCount > 0) {
       throw new CodecError('core.base64.dataAfterPadding', {
         params: { position: i + 1 },
@@ -141,7 +145,14 @@ export function base64ToBytes(input, options = {}) {
         position: i,
       });
     }
-    sanitized += char;
+    digits += 1;
+    buffer = (buffer << 6) | LOOKUP[code];
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      bytes[byteIndex] = (buffer >>> bits) & 0xff;
+      byteIndex += 1;
+    }
   }
 
   if (sawWhitespace) {
@@ -159,7 +170,7 @@ export function base64ToBytes(input, options = {}) {
     });
   }
 
-  const remainder = sanitized.length % 4;
+  const remainder = digits % 4;
   if (remainder === 1) {
     throw new CodecError('core.base64.invalidLength', {
       hintCode: 'core.base64.invalidLength.hint',
@@ -169,24 +180,8 @@ export function base64ToBytes(input, options = {}) {
     if (strict) throw new CodecError('core.base64.missingPaddingStrict');
     if (padCount === 0) warnings.push(msg('core.base64.missingPadding'));
   }
-  if (padCount > 0 && (sanitized.length + padCount) % 4 !== 0) {
+  if (padCount > 0 && (digits + padCount) % 4 !== 0) {
     warnings.push(msg('core.base64.oddPadding'));
-  }
-
-  const byteLength = Math.floor((sanitized.length * 3) / 4);
-  const bytes = new Uint8Array(byteLength);
-  let byteIndex = 0;
-  let buffer = 0;
-  let bits = 0;
-
-  for (let i = 0; i < sanitized.length; i += 1) {
-    buffer = (buffer << 6) | LOOKUP[sanitized.charCodeAt(i)];
-    bits += 6;
-    if (bits >= 8) {
-      bits -= 8;
-      bytes[byteIndex] = (buffer >>> bits) & 0xff;
-      byteIndex += 1;
-    }
   }
 
   return { bytes: bytes.subarray(0, byteIndex), warnings };
