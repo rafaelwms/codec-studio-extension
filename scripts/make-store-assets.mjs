@@ -4,8 +4,8 @@
  *   1. suba o servidor local:  npm run serve
  *   2. rode:                   node scripts/make-store-assets.mjs
  *
- * Usa o Chrome instalado em modo headless para capturar a própria interface —
- * as capturas mostram o app real, não uma maquete.
+ * Usa o Chrome instalado em modo headless, pelo DevTools Protocol, para capturar a
+ * própria interface — as capturas mostram o app real, não uma maquete.
  *
  * Saída:
  *   press/en/screenshot-1..5.png     1280×800  (listagem em inglês)
@@ -15,7 +15,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -51,12 +51,6 @@ const TEXTS = {
   },
   "active": true
 }`,
-    base64:
-      'Codec Studio encodes Base64 without anything leaving your browser. 🔒\n\n' +
-      'Real UTF-8: accents (ação), ç, emoji 🎉 and 日本語 survive the round trip — ' +
-      'no mojibake like btoa() produces.\n\n' +
-      'Standard or URL-safe alphabet, optional padding and MIME line wrapping at 76 columns.\n' +
-      'Pasted something binary? The output becomes a readable hex dump with an ASCII column.',
   },
   'pt-BR': {
     invalidJson: `{
@@ -71,12 +65,6 @@ const TEXTS = {
   },
   "ativo": true
 }`,
-    base64:
-      'Codec Studio converte Base64 sem sair do seu navegador. 🔒\n\n' +
-      'UTF-8 de verdade: acentuação, ç, emoji 🎉 e 日本語 sobrevivem à ida e à volta — ' +
-      'nada de texto corrompido como acontece com btoa().\n\n' +
-      'Alfabeto padrão ou URL-safe, padding opcional e quebra de linha em 76 colunas (MIME).\n' +
-      'Colou algo binário? A saída vira um dump hexadecimal legível, com coluna ASCII.',
   },
 };
 
@@ -87,27 +75,27 @@ const shotsFor = (lang) => [
   {
     file: 'screenshot-1.png',
     size: [1280, 800],
-    query: { tool: 'json-java', direction: 'json-to-java', style: 'record', theme: 'dark' },
+    query: { from: 'json', to: 'java', style: 'record', theme: 'dark' },
   },
   {
     file: 'screenshot-2.png',
     size: [1280, 800],
-    query: { tool: 'json-java', direction: 'java-to-json', theme: 'dark' },
+    query: { from: 'base64', to: 'file', theme: 'dark' },
   },
   {
     file: 'screenshot-3.png',
     size: [1280, 800],
-    query: { tool: 'base64', direction: 'encode', theme: 'dark', wrap: 'true', text: TEXTS[lang].base64 },
+    query: { from: 'file', to: 'base64', theme: 'dark', file: '../icons/icon128.png', fileName: 'logo.png' },
   },
   {
     file: 'screenshot-4.png',
     size: [1280, 800],
-    query: { tool: 'json-java', direction: 'json-to-java', style: 'pojo', theme: 'light' },
+    query: { from: 'java', to: 'typescript', theme: 'light' },
   },
   {
     file: 'screenshot-5.png',
     size: [1280, 800],
-    query: { tool: 'json-java', direction: 'json-to-java', theme: 'dark', text: TEXTS[lang].invalidJson },
+    query: { from: 'json', to: 'java', theme: 'dark', text: TEXTS[lang].invalidJson },
   },
 ];
 
@@ -132,6 +120,7 @@ writeFileSync(
   readFileSync(join(root, 'app.html'), 'utf8')
     .replace('href="styles/', 'href="../styles/')
     .replace('href="icons/', 'href="../icons/')
+    .replace('src="icons/', 'src="../icons/')
     .replace('<title>Codec Studio</title>', '<title>Codec Studio — captura</title>')
     .replace(
       '<script type="module" src="src/ui/main.js"></script>',
@@ -140,65 +129,102 @@ writeFileSync(
     ),
 );
 
-const profileRoot = join(tmpdir(), `codec-shots-${Date.now()}`);
+const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-/** Espera o PNG aparecer e parar de crescer — o Chrome escreve o arquivo bem antes de sair. */
-async function waitForStableFile(path, timeoutMs = 60_000) {
+async function waitForEndpoint(port, timeoutMs = 15_000) {
   const deadline = Date.now() + timeoutMs;
-  let lastSize = -1;
   while (Date.now() < deadline) {
-    await sleep(250);
-    if (!existsSync(path)) continue;
-    const { size } = statSync(path);
-    if (size > 0 && size === lastSize) return true;
-    lastSize = size;
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/json/version`);
+      if (response.ok) return;
+    } catch {
+      // Chrome ainda subindo: tenta de novo.
+    }
+    await sleep(150);
   }
-  return false;
+  throw new Error('Chrome não abriu a porta de debug a tempo.');
 }
 
-/**
- * O headless grava a captura rapidamente, mas o processo costuma ficar pendurado
- * depois disso. Em vez de esperar o encerramento, aguardamos o arquivo e matamos
- * o processo — e rodamos todas as capturas em paralelo.
- */
-async function capture(shot, index) {
-  const params = new URLSearchParams(shot.query).toString();
-  const url = `${BASE}/press/${shot.page || 'demo.html'}?${params}`;
+/** Cliente mínimo do DevTools Protocol, sobre o WebSocket nativo do Node. */
+function createClient(webSocketUrl) {
+  const socket = new WebSocket(webSocketUrl);
+  const pending = new Map();
+  let nextId = 1;
+  const ready = new Promise((done, fail) => {
+    socket.addEventListener('open', () => done());
+    socket.addEventListener('error', fail);
+  });
+  socket.addEventListener('message', (event) => {
+    const message = JSON.parse(event.data);
+    pending.get(message.id)?.(message.result);
+    pending.delete(message.id);
+  });
+  return {
+    async send(method, params = {}) {
+      await ready;
+      const id = nextId++;
+      return new Promise((done) => {
+        pending.set(id, done);
+        socket.send(JSON.stringify({ id, method, params }));
+      });
+    },
+    close: () => socket.close(),
+  };
+}
+
+/** A captura só sai quando a página diz que terminou: carregar um arquivo é assíncrono. */
+async function capture(client, shot) {
+  const page = shot.page || 'demo.html';
+  const url = `${BASE}/press/${page}?${new URLSearchParams(shot.query)}`;
   const target = join(outDir, shot.file);
   mkdirSync(dirname(target), { recursive: true });
-  rmSync(target, { force: true });
 
-  const child = spawn(
-    browser,
-    [
-      '--headless=new',
-      '--disable-gpu',
-      '--no-first-run',
-      '--no-default-browser-check',
-      '--disable-component-update',
-      '--disable-background-networking',
-      '--disable-client-side-phishing-detection',
-      '--hide-scrollbars',
-      '--force-device-scale-factor=1',
-      `--window-size=${shot.size[0]},${shot.size[1]}`,
-      `--screenshot=${target}`,
-      // Um perfil por captura: um diretório compartilhado deixa lock para trás.
-      `--user-data-dir=${join(profileRoot, `p${index}`)}`,
-      url,
-    ],
-    { stdio: 'ignore' },
-  );
+  await client.send('Emulation.setDeviceMetricsOverride', {
+    width: shot.size[0], height: shot.size[1], deviceScaleFactor: 1, mobile: false,
+  });
+  await client.send('Page.navigate', { url });
+  await sleep(200);
 
-  const ok = await waitForStableFile(target);
-  child.kill('SIGKILL');
+  const expression = shot.page ? 'document.readyState === "complete"' : 'window.__demoReady === true';
+  const deadline = Date.now() + 20_000;
+  for (;;) {
+    const result = await client.send('Runtime.evaluate', { expression });
+    if (result.result?.value === true) break;
+    if (Date.now() > deadline) throw new Error(`Falha ao capturar ${shot.file}`);
+    await sleep(100);
+  }
+  await sleep(300); // primeira pintura com a fonte e a imagem já aplicadas
 
-  if (!ok) throw new Error(`Falha ao capturar ${shot.file}`);
+  const { data } = await client.send('Page.captureScreenshot', { format: 'png' });
+  writeFileSync(target, Buffer.from(data, 'base64'));
   console.log(`press/${shot.file}  ${shot.size[0]}×${shot.size[1]}`);
 }
 
-await Promise.all(shots.map(capture));
+const profile = join(tmpdir(), `codec-shots-${Date.now()}`);
+const port = 9222 + Math.floor(Math.random() * 100); // evita colidir com outra instância
+const child = spawn(browser, [
+  '--headless=new',
+  '--disable-gpu',
+  '--no-first-run',
+  '--no-default-browser-check',
+  '--disable-component-update',
+  '--disable-background-networking',
+  '--hide-scrollbars',
+  `--remote-debugging-port=${port}`,
+  `--user-data-dir=${profile}`,
+], { stdio: 'ignore' });
 
-rmSync(profileRoot, { recursive: true, force: true });
+try {
+  await waitForEndpoint(port);
+  const targets = await fetch(`http://127.0.0.1:${port}/json`).then((response) => response.json());
+  const client = createClient(targets.find((target) => target.type === 'page').webSocketDebuggerUrl);
+  await client.send('Page.enable');
+  for (const shot of shots) await capture(client, shot);
+  client.close();
+} finally {
+  child.kill('SIGKILL');
+  await sleep(200);
+  rmSync(profile, { recursive: true, force: true });
+}
+
 console.log('\nAssets prontos em press/. Confira antes de subir para a loja.');
